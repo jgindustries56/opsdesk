@@ -1,0 +1,21 @@
+{
+  "name": "opsdesk",
+  "version": "0.1.0",
+  "private": true,
+  "description": "White-label operations core: contacts, intakes, jobs, invoices, payments and a follow-up queue. One engine, many branded deployments.",
+  "type": "commonjs",
+  "main": "server.js",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "seed": "node seed.js",
+    "test": "node test/smoke.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "pg": "^8.13.1"
+  }
+}
