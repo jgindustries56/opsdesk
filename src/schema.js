@@ -117,6 +117,35 @@ const TABLES = [
      key           ${D.text} PRIMARY KEY,
      value         ${D.int} NOT NULL
    )`,
+
+  // The unified inbox — every inbound/outbound touch across channels, distinct
+  // from `intakes` (which models an enquiry, not a single communication).
+  `CREATE TABLE IF NOT EXISTS messages (
+     id            ${D.id},
+     contact_id    ${D.fk} REFERENCES contacts(id) ON DELETE SET NULL,
+     channel       ${D.text} NOT NULL,
+     direction     ${D.text} NOT NULL DEFAULT 'in',
+     status        ${D.text} NOT NULL DEFAULT 'new',
+     unread        ${D.bool} DEFAULT ${D.true},
+     subject       ${D.text},
+     body          ${D.text},
+     external_id   ${D.text},
+     occurred_at   ${D.ts} DEFAULT ${D.now},
+     created_at    ${D.ts} DEFAULT ${D.now}
+   )`,
+
+  // When-then commitments from the attention queue ("remind me Monday
+  // morning"), resolved to an actual timestamp server-side at creation.
+  `CREATE TABLE IF NOT EXISTS scheduled_followups (
+     id            ${D.id},
+     trigger_label ${D.text} NOT NULL,
+     trigger_at    ${D.ts} NOT NULL,
+     target_kind   ${D.text} NOT NULL,
+     target_id     ${D.fk},
+     label         ${D.text},
+     done_at       ${D.ts},
+     created_at    ${D.ts} DEFAULT ${D.now}
+   )`,
 ];
 
 const INDEXES = [
@@ -129,6 +158,9 @@ const INDEXES = [
   `CREATE INDEX IF NOT EXISTS idx_items_invoice ON invoice_items(invoice_id)`,
   `CREATE INDEX IF NOT EXISTS idx_payments_invoice ON payments(invoice_id)`,
   `CREATE INDEX IF NOT EXISTS idx_activity_entity ON activity(entity_type, entity_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_messages_status ON messages(status, occurred_at)`,
+  `CREATE INDEX IF NOT EXISTS idx_messages_contact ON messages(contact_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_scheduled_due ON scheduled_followups(trigger_at, done_at)`,
 ];
 
 async function migrate() {
