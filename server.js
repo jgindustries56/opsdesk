@@ -45,14 +45,24 @@ app.get('/healthz', (req, res) =>
 
 // ---- Login ----------------------------------------------------------------
 app.get('/login', (req, res) => {
-  res.type('html').send(loginPage(req.query.error ? 'That password did not match.' : ''));
+  const message = req.query.limited
+    ? 'Too many attempts — try again in a few minutes.'
+    : req.query.error
+      ? 'That password did not match.'
+      : '';
+  res.type('html').send(loginPage(message));
 });
 
 app.post('/login', (req, res) => {
+  if (auth.loginRateLimited(req)) {
+    return res.redirect('/login?limited=1');
+  }
   if (auth.passwordMatches((req.body || {}).password)) {
+    auth.clearLoginAttempts(req);
     auth.issue(res);
     return res.redirect('/');
   }
+  auth.recordFailedLogin(req);
   return res.redirect('/login?error=1');
 });
 
@@ -116,19 +126,38 @@ function loginPage(message) {
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${escapeHtml(c.companyName)}</title>
 <style>
-  :root { color-scheme: light dark; }
+  :root {
+    color-scheme: light;
+    --page: #f9f9f7; --surface-raised: #ffffff; --ink: #0b0b0b;
+    --ink-secondary: #52514e; --ink-muted: #898781; --border: rgba(11,11,11,0.10);
+    --brand: ${c.brandPrimary}; --critical: ${c.brandDanger};
+    --critical-bg: color-mix(in srgb, ${c.brandDanger} 12%, white);
+    --shadow: 0 12px 32px -12px rgba(11,11,11,0.24);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { color-scheme: dark;
+      --page: #0d0d0d; --surface-raised: #1a1a19; --ink: #ffffff;
+      --ink-secondary: #c3c2b7; --ink-muted: #898781; --border: rgba(255,255,255,0.10);
+      --critical-bg: color-mix(in srgb, ${c.brandDanger} 22%, black);
+      --shadow: 0 12px 32px -12px rgba(0,0,0,0.6);
+    }
+  }
+  * { box-sizing: border-box; }
   body { margin:0; min-height:100vh; display:grid; place-items:center;
-         font-family:${c.brandFont}; background:#0e1116; color:#e6edf3; }
-  .card { background:#161b22; padding:2.5rem; border-radius:${c.brandRadius};
-          width:min(92vw,380px); border:1px solid #2a313c; }
-  h1 { margin:0 0 .25rem; font-size:1.35rem; }
-  p.sub { margin:0 0 1.5rem; color:#8b949e; font-size:.9rem; }
-  input { width:100%; padding:.7rem .8rem; border-radius:8px; border:1px solid #2a313c;
-          background:#0e1116; color:inherit; font-size:1rem; box-sizing:border-box; }
-  button { width:100%; margin-top:1rem; padding:.75rem; border:0; border-radius:8px;
-           background:${c.brandPrimary}; color:#fff; font-size:1rem; font-weight:600; cursor:pointer; }
-  .err { color:#ff7b72; font-size:.85rem; margin-top:.75rem; }
-  .env { margin-top:1.25rem; font-size:.75rem; color:#8b949e; text-transform:uppercase; letter-spacing:.08em; }
+         font-family:${c.brandFont}; background:var(--page); color:var(--ink); }
+  .card { background:var(--surface-raised); padding:2.25rem 2rem; border-radius:${c.brandRadius};
+          width:min(92vw,380px); border:1px solid var(--border); box-shadow:var(--shadow); }
+  h1 { margin:0 0 .25rem; font-size:1.3rem; font-weight:700; letter-spacing:-0.01em; }
+  p.sub { margin:0 0 1.5rem; color:var(--ink-secondary); font-size:.9rem; }
+  input { width:100%; padding:.7rem .8rem; border-radius:calc(${c.brandRadius} * 0.7);
+          border:1px solid var(--border); background:var(--page); color:inherit; font-size:1rem; }
+  input:focus-visible { outline:2px solid var(--brand); outline-offset:1px; }
+  button { width:100%; margin-top:1rem; padding:.75rem; border:0; border-radius:calc(${c.brandRadius} * 0.7);
+           background:var(--brand); color:#fff; font-size:1rem; font-weight:600; cursor:pointer; }
+  button:hover { filter:brightness(0.92); }
+  .err { color:var(--critical); background:var(--critical-bg); border-radius:8px; padding:.6rem .75rem;
+         font-size:.85rem; margin-top:.9rem; }
+  .env { margin-top:1.25rem; font-size:.72rem; color:var(--ink-muted); text-transform:uppercase; letter-spacing:.08em; text-align:center; }
 </style></head><body>
 <form class="card" method="post" action="/login">
   <h1>${escapeHtml(c.companyName)}</h1>
