@@ -111,6 +111,43 @@ async function syncInvoiceStatus(id) {
   return { ...inv, status, paid_at: paidAt };
 }
 
+/**
+ * The writable half of config. Branding and vocabulary stay env vars (set
+ * once at deploy); follow-up thresholds and notification preferences live
+ * here so the Settings page can change them live, no redeploy required.
+ */
+const SETTINGS_DEFAULTS = {
+  intakeStaleDays: String(config.followUp.intakeStaleDays),
+  jobStaleDays: String(config.followUp.jobStaleDays),
+  draftInvoiceDays: String(config.followUp.draftInvoiceDays),
+  uninvoicedJobDays: String(config.followUp.uninvoicedJobDays),
+  overdueGraceDays: String(config.followUp.overdueGraceDays),
+  notifyMissedCall: 'true',
+  notifyOverdue: 'true',
+  notifyDailyDigest: 'false',
+  notifySms: 'true',
+  autoRemind: 'true',
+};
+
+/** Seeds any settings keys that don't exist yet. Safe to call on every boot. */
+async function seedSettingsDefaults() {
+  const existing = new Set((await db.all('SELECT key FROM settings')).map((r) => r.key));
+  for (const [key, value] of Object.entries(SETTINGS_DEFAULTS)) {
+    if (existing.has(key)) continue;
+    await db.query('INSERT INTO settings (key, value, updated_at) VALUES ($1,$2,$3)', [
+      key,
+      value,
+      nowIso(),
+    ]);
+  }
+}
+
+/** All settings as a flat { key: value } map of strings. */
+async function getSettingsMap() {
+  const rows = await db.all('SELECT key, value FROM settings');
+  return Object.fromEntries(rows.map((r) => [r.key, r.value]));
+}
+
 async function logActivity(entityType, entityId, kind, body, actor = 'system') {
   await db.query(
     'INSERT INTO activity (entity_type, entity_id, kind, body, actor, created_at) VALUES ($1,$2,$3,$4,$5,$6)',
@@ -134,7 +171,14 @@ async function touch(table, id) {
  * identically and the thresholds stay configurable per client.
  */
 async function buildFollowUps() {
-  const rules = config.followUp;
+  const settings = await getSettingsMap();
+  const rules = {
+    intakeStaleDays: Number(settings.intakeStaleDays ?? config.followUp.intakeStaleDays),
+    jobStaleDays: Number(settings.jobStaleDays ?? config.followUp.jobStaleDays),
+    draftInvoiceDays: Number(settings.draftInvoiceDays ?? config.followUp.draftInvoiceDays),
+    uninvoicedJobDays: Number(settings.uninvoicedJobDays ?? config.followUp.uninvoicedJobDays),
+    overdueGraceDays: Number(settings.overdueGraceDays ?? config.followUp.overdueGraceDays),
+  };
   const out = [];
   const contactsById = new Map(
     (await db.all('SELECT id, name, company, phone, email FROM contacts')).map((c) => [
@@ -331,5 +375,8 @@ module.exports = {
   touch,
   buildFollowUps,
   formatMoneyServer,
+  seedSettingsDefaults,
+  getSettingsMap,
+  SETTINGS_DEFAULTS,
   DAY_MS,
 };

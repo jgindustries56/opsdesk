@@ -63,6 +63,10 @@ router.get('/summary', async (req, res) => {
 
   const followUps = await buildFollowUps();
 
+  const messages = await db.all('SELECT status, unread FROM messages');
+  const missedCount = messages.filter((m) => m.status === 'missed').length;
+  const unreadCount = messages.filter((m) => Number(m.unread)).length;
+
   res.json({
     currency: config.currency,
     outstanding_cents: outstanding,
@@ -77,6 +81,7 @@ router.get('/summary', async (req, res) => {
     active_jobs: activeJobs,
     followup_count: followUps.length,
     followup_high: followUps.filter((f) => f.severity === 'high').length,
+    unreturned_count: missedCount + unreadCount,
   });
 });
 

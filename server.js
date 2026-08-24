@@ -92,6 +92,11 @@ app.use('/api/intakes', guard('intakes'), safeRouter(require('./src/routes/intak
 app.use('/api/jobs', guard('jobs'), safeRouter(require('./src/routes/jobs')));
 app.use('/api/invoices', guard('invoices'), safeRouter(require('./src/routes/invoices')));
 app.use('/api/dashboard', safeRouter(require('./src/routes/dashboard')));
+app.use('/api/queue', safeRouter(require('./src/routes/queue')));
+app.use('/api/messages', safeRouter(require('./src/routes/messages')));
+app.use('/api/settings', safeRouter(require('./src/routes/settings')));
+app.use('/api/followups', safeRouter(require('./src/routes/followups')));
+app.use('/api/search', safeRouter(require('./src/routes/search')));
 
 app.use(express.static(path.join(__dirname, 'public'), { extensions: ['html'] }));
 
@@ -151,6 +156,7 @@ async function start() {
 
   await db.init();
   await schema.migrate();
+  await require('./src/lib').seedSettingsDefaults();
 
   app.listen(config.port, () => {
     console.log(

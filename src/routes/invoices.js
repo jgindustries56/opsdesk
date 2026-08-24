@@ -7,6 +7,7 @@ const {
   nowIso,
   todayIso,
   addDays,
+  daysSince,
   toCents,
   loadInvoice,
   syncInvoiceStatus,
@@ -45,6 +46,66 @@ router.get('/', async (req, res) => {
     out.push(entry);
   }
   res.json(out);
+});
+
+/** AR aging buckets for everything still owed. Order matters: before /:id. */
+router.get('/aging', async (req, res) => {
+  const buckets = [
+    { label: 'Current', min: 0, max: 30, total_cents: 0 },
+    { label: '31-60', min: 31, max: 60, total_cents: 0 },
+    { label: '61-90', min: 61, max: 90, total_cents: 0 },
+    { label: '90+', min: 91, max: Infinity, total_cents: 0 },
+  ];
+  const rows = await db.all("SELECT * FROM invoices WHERE status IN ('Sent','Partial')");
+  for (const inv of rows) {
+    const full = await loadInvoice(inv.id);
+    if (!full || full.totals.balance <= 0) continue;
+    const days = inv.due_date ? Math.max(0, daysSince(`${inv.due_date}T23:59:59`)) : 0;
+    const bucket = buckets.find((b) => days >= b.min && days <= b.max) || buckets[0];
+    bucket.total_cents += full.totals.balance;
+  }
+  res.json(buckets);
+});
+
+/** CSV export of every non-void invoice. Order matters: before /:id. */
+router.get('/export.csv', async (req, res) => {
+  const rows = await db.all("SELECT * FROM invoices WHERE status != 'Void' ORDER BY id DESC");
+  const contacts = await db.all('SELECT id, name, company FROM contacts');
+  const cmap = new Map(contacts.map((c) => [String(c.id), c]));
+  const header = ['Invoice', 'Customer', 'Status', 'Issued', 'Due', 'Total', 'Paid', 'Balance'];
+  const lines = [header.join(',')];
+  for (const inv of rows) {
+    const full = await loadInvoice(inv.id);
+    const contact = cmap.get(String(inv.contact_id));
+    const csvCell = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    lines.push(
+      [
+        csvCell(inv.number),
+        csvCell(contact ? contact.name : ''),
+        csvCell(inv.status),
+        csvCell(inv.issue_date),
+        csvCell(inv.due_date),
+        (full.totals.total / 100).toFixed(2),
+        (full.totals.paid / 100).toFixed(2),
+        (full.totals.balance / 100).toFixed(2),
+      ].join(',')
+    );
+  }
+  res.type('text/csv').send(lines.join('\n'));
+});
+
+/** Send a reminder to every overdue invoice at once. Order matters: before /:id. */
+router.post('/remind-overdue', async (req, res) => {
+  const rows = await db.all("SELECT * FROM invoices WHERE status IN ('Sent','Partial')");
+  let count = 0;
+  for (const inv of rows) {
+    const full = await loadInvoice(inv.id);
+    if (!full || full.totals.balance <= 0) continue;
+    if (!inv.due_date || daysSince(`${inv.due_date}T23:59:59`) <= 0) continue;
+    await logActivity('invoice', inv.id, 'sent', 'Bulk reminder sent');
+    count += 1;
+  }
+  res.json({ ok: true, reminded: count });
 });
 
 router.get('/:id', async (req, res) => {
@@ -150,8 +211,10 @@ router.put('/:id', async (req, res) => {
   res.json(await loadInvoice(req.params.id));
 });
 
-/** Mark as sent. Starts the overdue clock. */
+/** Mark as sent (or send a reminder/chase on an already-sent invoice). Starts the overdue clock. */
 router.post('/:id/send', async (req, res) => {
+  const b = req.body || {};
+  const tone = ['gentle', 'firm', 'final'].includes(b.tone) ? b.tone : 'gentle';
   const existing = await db.one('SELECT * FROM invoices WHERE id = $1', [req.params.id]);
   if (!existing) return res.status(404).json({ error: 'Not found' });
   await db.query(
@@ -160,7 +223,7 @@ router.post('/:id/send', async (req, res) => {
     [nowIso(), todayIso(), req.params.id]
   );
   await syncInvoiceStatus(req.params.id);
-  await logActivity('invoice', req.params.id, 'sent', 'Marked as sent');
+  await logActivity('invoice', req.params.id, 'sent', `Sent (${tone})`);
   res.json(await loadInvoice(req.params.id));
 });
 

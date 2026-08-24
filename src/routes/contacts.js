@@ -2,7 +2,7 @@
 
 const express = require('express');
 const db = require('../db');
-const { nowIso, logActivity } = require('../lib');
+const { nowIso, logActivity, loadInvoice } = require('../lib');
 
 const router = express.Router();
 
@@ -24,7 +24,7 @@ router.get('/', async (req, res) => {
 router.get('/:id', async (req, res) => {
   const contact = await db.one('SELECT * FROM contacts WHERE id = $1', [req.params.id]);
   if (!contact) return res.status(404).json({ error: 'Not found' });
-  const [intakes, jobs, invoices, activity] = await Promise.all([
+  const [intakes, jobs, invoices, activity, messages] = await Promise.all([
     db.all('SELECT * FROM intakes WHERE contact_id = $1 ORDER BY id DESC', [req.params.id]),
     db.all('SELECT * FROM jobs WHERE contact_id = $1 ORDER BY id DESC', [req.params.id]),
     db.all('SELECT * FROM invoices WHERE contact_id = $1 ORDER BY id DESC', [req.params.id]),
@@ -32,8 +32,17 @@ router.get('/:id', async (req, res) => {
       "SELECT * FROM activity WHERE entity_type = 'contact' AND entity_id = $1 ORDER BY id DESC",
       [req.params.id]
     ),
+    db.all('SELECT * FROM messages WHERE contact_id = $1 ORDER BY occurred_at DESC', [
+      req.params.id,
+    ]),
   ]);
-  res.json({ ...contact, intakes, jobs, invoices, activity });
+  let lifetime = 0;
+  for (const inv of invoices) {
+    if (inv.status === 'Void') continue;
+    const full = await loadInvoice(inv.id);
+    lifetime += full.totals.paid;
+  }
+  res.json({ ...contact, intakes, jobs, invoices, activity, messages, lifetime_paid_cents: lifetime });
 });
 
 router.post('/', async (req, res) => {
