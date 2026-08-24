@@ -575,102 +575,50 @@
 (function () {
   "use strict";
 
-  // ============ seed data ============
-  // Benchmarks are real: 56% of US small businesses are owed on unpaid invoices,
-  // avg $17,500 outstanding; 47% have invoices 30+ days overdue (BellaFSM 2026 report).
-  const BENCH = { avgOwed: 17500, pctOver30: 47 };
-
-  let uid = 100;
-  const nid = () => ++uid;
-
-  const state = {
-    page: "overview",
-    range: 30,
-    tenant: "Redline Auto Works",
-    tenantKey: "redline",
-    inboxFilter: "all",
-    invoiceFilter: "all",
-    contactSort: "recent",
-    selectedContact: null,
-    modal: null,
-    search: "",
-    messages: [
-      { id: nid(), chan: "call", who: "Unknown", phone: "(678) 555-0199", snippet: "Missed call — no voicemail left", when: "8 min ago", ts: 8, status: "missed", unread: true },
-      { id: nid(), chan: "text", who: "M. Alvarez", phone: "(678) 555-0142", snippet: "“Can I bring it in today instead of tomorrow?”", when: "22 min ago", ts: 22, status: "new", unread: true },
-      { id: nid(), chan: "email", who: "AutoZone Pro Supply", phone: "—", snippet: "Order #88213 has shipped — tracking attached", when: "1 hr ago", ts: 60, status: "done", unread: false },
-      { id: nid(), chan: "call", who: "D. Whitfield", phone: "(770) 555-0188", snippet: "Answered · 6 min · asked about brake pad pricing", when: "2 hrs ago", ts: 120, status: "done", unread: false },
-      { id: nid(), chan: "email", who: "R. Diaz", phone: "(678) 555-0127", snippet: "“Can you resend the estimate from Tuesday?”", when: "5 hrs ago", ts: 300, status: "new", unread: true },
-      { id: nid(), chan: "text", who: "D. Whitfield", phone: "(770) 555-0188", snippet: "Estimate #1051 sent — awaiting approval", when: "Yesterday", ts: 1440, status: "waiting", unread: false },
-      { id: nid(), chan: "walkin", who: "T. Nguyen", phone: "(470) 555-0103", snippet: "Walked in for a quote — 2018 Camry, AC not cooling", when: "Yesterday", ts: 1500, status: "waiting", unread: false },
-      { id: nid(), chan: "call", who: "R. Okafor", phone: "(678) 555-0164", snippet: "Missed call · 2nd attempt today", when: "Yesterday", ts: 1560, status: "missed", unread: false },
-      { id: nid(), chan: "email", who: "Gwinnett Fleet Services", phone: "—", snippet: "Quarterly fleet maintenance — 6 vehicles, requesting quote", when: "2 days ago", ts: 2880, status: "waiting", unread: false }
-    ],
-    invoices: [
-      { id: nid(), num: "1042", who: "R. Diaz", desc: "Brake pads & rotors, front axle", amount: 340, status: "overdue", days: 42, issued: "Jul 12" },
-      { id: nid(), num: "1038", who: "Gwinnett Fleet Services", desc: "Fleet oil service ×4", amount: 236, status: "overdue", days: 67, issued: "Jun 17" },
-      { id: nid(), num: "1051", who: "D. Whitfield", desc: "Estimate — timing belt & water pump", amount: 610, status: "sent", days: 3, issued: "Aug 20" },
-      { id: nid(), num: "1055", who: "R. Okafor", desc: "Multi-point inspection", amount: 89, status: "draft", days: 0, issued: "—" },
-      { id: nid(), num: "1049", who: "M. Alvarez", desc: "Check engine diagnostics + coil pack", amount: 255, status: "paid", days: 0, issued: "Aug 14" },
-      { id: nid(), num: "1047", who: "T. Nguyen", desc: "AC recharge & leak check", amount: 129, status: "paid", days: 0, issued: "Aug 9" },
-      { id: nid(), num: "1044", who: "S. Barrett", desc: "Alignment + tire rotation", amount: 148, status: "paid", days: 0, issued: "Aug 2" },
-      { id: nid(), num: "1035", who: "K. Pham", desc: "Alternator replacement", amount: 512, status: "overdue", days: 31, issued: "Jul 23" }
-    ],
-    contacts: [
-      { id: nid(), name: "R. Diaz", phone: "(678) 555-0127", email: "rdiaz@example.com", vehicle: "2019 Honda Civic", ltv: 1240, visits: 6, last: "5 hrs ago", lastTs: 300, flag: "overdue" },
-      { id: nid(), name: "D. Whitfield", phone: "(770) 555-0188", email: "dwhit@example.com", vehicle: "2016 Ford F-150", ltv: 2890, visits: 11, last: "2 hrs ago", lastTs: 120, flag: null },
-      { id: nid(), name: "M. Alvarez", phone: "(678) 555-0142", email: "malvarez@example.com", vehicle: "2021 Toyota RAV4", ltv: 755, visits: 4, last: "22 min ago", lastTs: 22, flag: null },
-      { id: nid(), name: "Gwinnett Fleet Services", phone: "(770) 555-0210", email: "ops@gwinnettfleet.example", vehicle: "Fleet — 6 vehicles", ltv: 8420, visits: 27, last: "2 days ago", lastTs: 2880, flag: "overdue" },
-      { id: nid(), name: "R. Okafor", phone: "(678) 555-0164", email: "rokafor@example.com", vehicle: "2014 Nissan Altima", ltv: 310, visits: 2, last: "Yesterday", lastTs: 1560, flag: "no-callback" },
-      { id: nid(), name: "T. Nguyen", phone: "(470) 555-0103", email: "tnguyen@example.com", vehicle: "2018 Toyota Camry", ltv: 129, visits: 1, last: "Yesterday", lastTs: 1500, flag: "new" },
-      { id: nid(), name: "K. Pham", phone: "(678) 555-0175", email: "kpham@example.com", vehicle: "2015 Subaru Outback", ltv: 1670, visits: 8, last: "31 days ago", lastTs: 44640, flag: "overdue" },
-      { id: nid(), name: "S. Barrett", phone: "(770) 555-0155", email: "sbarrett@example.com", vehicle: "2020 Mazda CX-5", ltv: 640, visits: 3, last: "21 days ago", lastTs: 30240, flag: "stale" }
-    ],
-    settings: {
-      staleEnquiry: 3,
-      overdueJob: 48,
-      invoiceChase: 14,
-      reconnect: 180,
-      notifyMissedCall: true,
-      notifyOverdue: true,
-      notifyDailyDigest: false,
-      notifySms: true,
-      autoRemind: true,
-      modContacts: true,
-      modInvoices: true,
-      modJobs: true,
-      modPayments: true,
-      accent: "#0f7d72",
-      vocabJob: "Repair",
-      vocabIntake: "Enquiry",
-      currency: "USD ($)"
-    },
-    revenue: [
-      { m: "Mar", billed: 14200, collected: 13050 },
-      { m: "Apr", billed: 15800, collected: 14790 },
-      { m: "May", billed: 16400, collected: 15220 },
-      { m: "Jun", billed: 17000, collected: 16780 },
-      { m: "Jul", billed: 19200, collected: 17600 },
-      { m: "Aug", billed: 20000, collected: 18420 }
-    ],
-    activityLog: [],
-    scheduled: [],
-    clearedToday: 0,
-    dayStartLoad: 0,
-    cmdk: { open: false, q: "", idx: 0 },
-    recovered: 0
-  };
-
-  const TENANTS = [
-    { key: "redline", name: "Redline Auto Works", vocabJob: "Repair", vocabIntake: "Enquiry", accent: "#c4291d" },
-    { key: "amberlyn", name: "Amberlyn & Co.", vocabJob: "Piece", vocabIntake: "Commission", accent: "#b08d4f" },
-    { key: "greenswell", name: "Greenswell Grounds", vocabJob: "Project", vocabIntake: "Site Visit", accent: "#4f6b4a" }
-  ];
+  // ============ api ============
+  // A 401 means the session cookie expired or was never set — go to the
+  // login page rather than rendering a confusing empty screen.
+  async function api(method, path, body) {
+    const opts = { method, headers: {}, credentials: "same-origin" };
+    if (body !== undefined) {
+      opts.headers["Content-Type"] = "application/json";
+      opts.body = JSON.stringify(body);
+    }
+    const res = await fetch(path, opts);
+    if (res.status === 401) {
+      window.location.href = "/login";
+      throw new Error("Not signed in");
+    }
+    const isCsv = (res.headers.get("content-type") || "").includes("text/csv");
+    const payload = isCsv ? await res.text() : await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const msg = (payload && payload.error) || (res.status + " " + res.statusText);
+      throw new Error(msg);
+    }
+    return payload;
+  }
 
   // ============ helpers ============
   const $ = (s, r) => (r || document).querySelector(s);
-  const money = n => "$" + n.toLocaleString("en-US");
-  const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-  const initials = n => n.split(/\s+/).map(w => w[0]).join("").replace(/[^A-Za-z]/g, "").slice(0, 2).toUpperCase();
+  const money = cents => "$" + ((cents || 0) / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const initials = n => String(n || "?").split(/\s+/).map(w => w[0]).join("").replace(/[^A-Za-z]/g, "").slice(0, 2).toUpperCase() || "?";
+
+  function timeAgo(iso) {
+    if (!iso) return "—";
+    const ms = Date.now() - new Date(iso).getTime();
+    if (ms < 0) return "just now";
+    const min = Math.floor(ms / 60000);
+    if (min < 1) return "just now";
+    if (min < 60) return min + " min ago";
+    const hrs = Math.floor(min / 60);
+    if (hrs < 24) return hrs + " hr" + (hrs === 1 ? "" : "s") + " ago";
+    const days = Math.floor(hrs / 24);
+    if (days === 1) return "Yesterday";
+    if (days < 14) return days + " days ago";
+    return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  }
+  function timeTs(iso) { return iso ? Date.now() - new Date(iso).getTime() : Infinity; }
 
   const CHAN_ICO = { call: "&#128222;", text: "&#128172;", email: "&#9993;", walkin: "&#128694;" };
   const CHAN_LBL = { call: "Call", text: "Text", email: "Email", walkin: "Walk-in" };
@@ -682,65 +630,182 @@
     el.innerHTML = '<div><div class="tt">' + esc(title) + "</div>" + (desc ? '<div class="td">' + esc(desc) + "</div>" : "") + "</div>";
     root.appendChild(el);
     setTimeout(() => { el.remove(); }, 3400);
-    state.activityLog.push({ title: title, at: Date.now() });
   }
 
-  // ============ derived ============
-  function outstanding() {
-    return state.invoices.filter(i => i.status === "overdue" || i.status === "sent").reduce((s, i) => s + i.amount, 0);
+  /** Disables the triggering button, runs fn, always re-enables, toasts on failure. */
+  async function withPending(el, fn) {
+    if (el && el.disabled) return;
+    if (el) el.disabled = true;
+    try {
+      await fn();
+    } catch (e) {
+      toast("Something went wrong", e.message || String(e), "err");
+    } finally {
+      if (el) el.disabled = false;
+    }
   }
-  function overdueList() { return state.invoices.filter(i => i.status === "overdue"); }
-  function collectedMTD() { return state.revenue[state.revenue.length - 1].collected; }
-  function unreadCount() { return state.messages.filter(m => m.unread).length; }
-  function missedNoCallback() { return state.messages.filter(m => m.status === "missed"); }
-  function awaitingApproval() { return state.invoices.filter(i => i.status === "sent" && i.days >= 2); }
 
+  // ============ state (a cache of server responses, not the source of truth) ============
+  const state = {
+    page: "overview",
+    range: 30,
+    tenant: "Redline Auto Works",
+    tenantKey: "redline",
+    inboxFilter: "all",
+    invoiceFilter: "all",
+    contactSort: "recent",
+    search: "",
+    loading: true,
+    loadError: null,
+
+    config: null,
+    summary: null,
+    messages: [],
+    invoices: [],
+    contacts: [],
+    queue: [],
+    progress: { done: 0, total: 1, remaining: 0, pct: 0 },
+    scheduled: [],
+    revenue: [],
+    triggerOptions: [],
+    serverSettings: {},
+
+    // Cosmetic only — branding/vocab/module toggles stay env-var driven per
+    // the merge plan; nothing here is persisted server-side.
+    settings: {
+      accent: "#0f7d72",
+      vocabJob: "Repair",
+      vocabIntake: "Enquiry",
+      currency: "USD ($)",
+      modContacts: true,
+      modInvoices: true,
+      modJobs: true,
+      modPayments: true,
+    },
+    cmdk: { open: false, q: "", idx: 0 },
+  };
+
+  const TENANTS = [
+    { key: "redline", name: "Redline Auto Works", vocabJob: "Repair", vocabIntake: "Enquiry", accent: "#c4291d" },
+    { key: "amberlyn", name: "Amberlyn & Co.", vocabJob: "Piece", vocabIntake: "Commission", accent: "#b08d4f" },
+    { key: "greenswell", name: "Greenswell Grounds", vocabJob: "Project", vocabIntake: "Site Visit", accent: "#4f6b4a" }
+  ];
+
+  const TRIGGER_THEN = {
+    "Later today": "when I next open Switchboard",
+    "Tomorrow morning": "first thing tomorrow",
+    "Monday morning": "when the week starts",
+    "Next week": "once things settle down",
+  };
+
+  // ============ view-model builders ============
+  // Real invoice statuses are Draft/Sent/Partial/Paid/Void. Switchboard's UI
+  // was built around a simpler derived set — reconcile them here, once.
+  function invoiceView(inv) {
+    const balance = inv.totals ? inv.totals.balance : 0;
+    const total = inv.totals ? inv.totals.total : 0;
+    let uiStatus = "draft";
+    let days = 0;
+    if (inv.status === "Draft") {
+      uiStatus = "draft";
+    } else if (inv.status === "Paid" || balance <= 0) {
+      uiStatus = "paid";
+    } else {
+      const overdue = inv.due_date ? daysPast(inv.due_date) : 0;
+      if (overdue > 0) { uiStatus = "overdue"; days = overdue; }
+      else { uiStatus = "sent"; days = inv.sent_at ? Math.max(0, daysPast(inv.sent_at.slice(0, 10))) : 0; }
+    }
+    const who = (inv.contact && (inv.contact.name || inv.contact.company)) || "Walk-in";
+    const desc = (inv.items && inv.items.length) ? inv.items.map(i => i.description).join(", ") : (inv.notes || "Service");
+    return { id: inv.id, num: inv.number, who, desc, amount_cents: total, balance_cents: balance, status: uiStatus, days, issued: inv.issue_date || "—", raw: inv };
+  }
+  function daysPast(dateStr) {
+    const due = new Date(dateStr + "T23:59:59Z").getTime();
+    return Math.floor((Date.now() - due) / 86400000);
+  }
+  function invoiceViews() { return state.invoices.filter(i => i.status !== "Void").map(invoiceView); }
+
+  function msgWho(m) { return (m.contact && (m.contact.name || m.contact.company)) || "Unknown"; }
+  function msgSnippet(m) { return m.subject || m.body || (CHAN_LBL[m.channel] || "Activity") + " logged"; }
+
+  function contactViews() {
+    const invByContact = new Map();
+    invoiceViews().forEach(iv => {
+      const k = String(iv.raw.contact_id);
+      if (!invByContact.has(k)) invByContact.set(k, []);
+      invByContact.get(k).push(iv);
+    });
+    const msgByContact = new Map();
+    state.messages.forEach(m => {
+      const k = String(m.contact_id);
+      if (!msgByContact.has(k)) msgByContact.set(k, []);
+      msgByContact.get(k).push(m);
+    });
+    return state.contacts.map(c => {
+      const invs = invByContact.get(String(c.id)) || [];
+      const msgs = msgByContact.get(String(c.id)) || [];
+      const ltv = invs.reduce((s, iv) => s + (iv.status === "paid" ? iv.amount_cents : (iv.amount_cents - iv.balance_cents)), 0);
+      const overdue = invs.some(iv => iv.status === "overdue");
+      const missed = msgs.some(m => m.status === "missed");
+      let lastTs = Infinity;
+      msgs.forEach(m => { lastTs = Math.min(lastTs, timeTs(m.occurred_at)); });
+      invs.forEach(iv => { lastTs = Math.min(lastTs, timeTs(iv.raw.updated_at || iv.raw.created_at)); });
+      if (lastTs === Infinity) lastTs = timeTs(c.created_at);
+      const staleDays = Number(state.serverSettings.jobStaleDays || 7) * 4;
+      let flag = null;
+      if (overdue) flag = "overdue";
+      else if (missed) flag = "no-callback";
+      else if (lastTs / 86400000 > staleDays) flag = "stale";
+      else if (!invs.length && !msgs.length) flag = "new";
+      return {
+        id: c.id, name: c.name, phone: c.phone || "—", email: c.email || "—",
+        vehicle: (c.notes || "Not recorded"),
+        ltv, visits: invs.length, last: timeAgo(new Date(Date.now() - lastTs).toISOString()), lastTs, flag,
+        raw: c,
+      };
+    });
+  }
+
+  // Maps the seven backend follow-up rules onto Switchboard's attention-item
+  // shape. Invoice rules get a direct one-click action; intake/job rules
+  // (Switchboard has no dedicated screen for those yet) get a view action.
+  const QUEUE_ACTION = {
+    invoice_overdue: { action: "remind-invoice", label: "Send reminder" },
+    invoice_draft: { action: "send-invoice", label: "Send it" },
+  };
   function attentionItems() {
-    const out = [];
-    overdueList().sort((a, b) => b.days - a.days).forEach(inv => {
-      out.push({
-        sev: inv.days > 30 ? "critical" : "warning",
-        text: "Invoice #" + inv.num + " — " + inv.who,
-        sub: inv.days + " days overdue · " + inv.desc,
-        amt: money(inv.amount),
-        amtCritical: inv.days > 30,
-        action: "remind-invoice", id: inv.id, label: "Send reminder"
-      });
+    const out = state.queue.map((it, idx) => {
+      const map = QUEUE_ACTION[it.type] || { action: "view-queue-item", label: "View" };
+      return {
+        sev: it.severity === "high" ? "critical" : "warning",
+        text: it.title,
+        sub: it.detail,
+        amt: it.value_cents ? money(it.value_cents) : "",
+        amtCritical: it.severity === "high",
+        action: map.action, id: it.id, idx, label: map.label,
+        kind: it.type,
+      };
     });
-    awaitingApproval().forEach(inv => {
-      out.push({
-        sev: "warning",
-        text: "Estimate #" + inv.num + " sent to " + inv.who,
-        sub: inv.days + " days, not yet approved",
-        amt: money(inv.amount), amtCritical: false,
-        action: "chase-estimate", id: inv.id, label: "Follow up"
-      });
-    });
-    const missed = missedNoCallback();
+    const missed = state.messages.filter(m => m.status === "missed");
     if (missed.length) {
       out.push({
         sev: "warning",
         text: missed.length + " missed call" + (missed.length > 1 ? "s" : "") + ", no callback logged",
-        sub: missed.map(m => m.who).join(" · "),
+        sub: missed.map(msgWho).join(" · "),
         amt: "", amtCritical: false,
-        action: "goto-inbox-missed", id: 0, label: "Review"
+        action: "goto-inbox-missed", id: 0, idx: -1, label: "Review",
+        kind: "missed_calls",
       });
     }
     return out;
   }
 
-  // Goal gradient — progress toward a cleared queue. Completion accelerates as
-  // the remaining distance shrinks, so the denominator is the day's starting load.
-  function clearProgress() {
-    const remaining = attentionItems().length;
-    const total = Math.max(state.dayStartLoad, state.clearedToday + remaining, 1);
-    return { done: state.clearedToday, total: total, remaining: remaining, pct: state.clearedToday / total };
-  }
+  function outstanding_cents() { return state.summary ? state.summary.outstanding_cents : 0; }
+  function overdueViews() { return invoiceViews().filter(i => i.status === "overdue"); }
+  function unreadCount() { return state.messages.filter(m => Number(m.unread)).length; }
+  function missedNoCallback() { return state.messages.filter(m => m.status === "missed"); }
 
-  function recordCleared(amount) {
-    state.clearedToday += 1;
-    if (amount) state.recovered += amount;
-  }
+  function clearProgress() { return state.progress; }
 
   // Fresh-start effect — behaviour changes cluster at temporal landmarks, so the
   // framing adapts to where in the week/month the owner actually is.
@@ -749,7 +814,7 @@
     const dow = d.getDay(), dom = d.getDate();
     const daysInMonth = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
     if (dom === 1) return { ico: "\u{1F5D3}", text: "<strong>First of the month.</strong> Clean slate on the books — last month's stragglers are the ones to settle before they age another cycle." };
-    if (dow === 1) return { ico: "\u2600", text: "<strong>Monday.</strong> Fresh week — clearing the queue now sets the tone for the next five days, and the list is at its shortest." };
+    if (dow === 1) return { ico: "☀", text: "<strong>Monday.</strong> Fresh week — clearing the queue now sets the tone for the next five days, and the list is at its shortest." };
     if (dow === 5) return { ico: "\u{1F3C1}", text: "<strong>Friday.</strong> Anything left open crosses the weekend and lands back on you Monday, two days older." };
     if (dom >= daysInMonth - 2) return { ico: "\u{1F4C6}", text: "<strong>Month-end in " + (daysInMonth - dom + 1) + " day" + (daysInMonth - dom === 0 ? "" : "s") + ".</strong> Invoices settled before the turn land in this month's numbers." };
     if (dow === 0 || dow === 6) return { ico: "\u{1F4AC}", text: "<strong>Weekend.</strong> Nothing here needs doing today — scheduling it for Monday means it is waiting for you rather than nagging you." };
@@ -758,17 +823,11 @@
   }
 
   function agingBuckets() {
-    const b = [
-      { lbl: "Current", min: 0, max: 30, total: 0, color: "var(--seq-250)" },
-      { lbl: "31–60", min: 31, max: 60, total: 0, color: "var(--seq-350)" },
-      { lbl: "61–90", min: 61, max: 90, total: 0, color: "var(--seq-450)" },
-      { lbl: "90+", min: 91, max: 9999, total: 0, color: "var(--seq-550)" }
-    ];
-    state.invoices.filter(i => i.status === "overdue" || i.status === "sent").forEach(i => {
-      const k = b.find(x => i.days >= x.min && i.days <= x.max) || b[0];
-      k.total += i.amount;
-    });
-    return b;
+    // aging is fetched fresh from the server; state.aging holds [{label,total_cents}]
+    return (state.aging || []).map((b, i) => ({
+      lbl: b.label, total: b.total_cents / 100,
+      color: ["var(--seq-250)", "var(--seq-350)", "var(--seq-450)", "var(--seq-550)"][i] || "var(--seq-500)",
+    }));
   }
 
   // ============ nav ============
@@ -790,14 +849,24 @@
   }
 
   // ============ pages ============
+  function pageLoading() {
+    return '<div class="page-head"><h1>Loading&hellip;</h1><p>Fetching the latest from the server.</p></div>';
+  }
+  function pageError() {
+    return '<div class="page-head"><h1>Couldn’t load Switchboard</h1><p>' + esc(state.loadError) + '</p></div>' +
+      '<button class="btn btn-primary" data-action="retry-load">Try again</button>';
+  }
+
   function pageOverview() {
     const items = attentionItems();
-    const out = outstanding();
-    const od = overdueList();
-    const maxBar = Math.max.apply(null, state.revenue.map(r => r.billed));
+    const out = outstanding_cents();
+    const od = overdueViews();
+    const revenue = state.revenue;
+    const maxBar = Math.max.apply(null, revenue.map(r => r.billed_cents).concat([1]));
     const prog = clearProgress();
     const lm = landmark();
     const C = 2 * Math.PI * 20;
+    const summary = state.summary || {};
 
     const ring =
       '<div class="clear-ring">' +
@@ -815,8 +884,8 @@
             '<span class="sev ' + it.sev + '"></span>' +
             '<div class="text">' + esc(it.text) + '<div class="sub">' + esc(it.sub) + "</div></div>" +
             (it.amt ? '<div class="amt tab" style="' + (it.amtCritical ? "color:var(--critical-text)" : "") + '">' + it.amt + "</div>" : "") +
-            '<button class="btn btn-ghost btn-sm" data-action="schedule-item" data-kind="' + it.action + '" data-id="' + it.id + '" title="Decide when you will do this">When?</button>' +
-            '<button class="btn btn-ghost btn-sm" data-action="' + it.action + '" data-id="' + it.id + '">' + it.label + "</button>" +
+            '<button class="btn btn-ghost btn-sm" data-action="schedule-item" data-kind="' + it.action + '" data-id="' + it.id + '" data-label="' + esc(it.text) + '" title="Decide when you will do this">When?</button>' +
+            '<button class="btn btn-ghost btn-sm" data-action="' + it.action + '" data-id="' + it.id + '" data-idx="' + it.idx + '">' + it.label + "</button>" +
           "</div>").join("") + "</div>"
       : '<div class="cleared-hero">' +
           '<div class="cleared-mark">&#10003;</div>' +
@@ -824,7 +893,7 @@
           "<p>Every invoice is current, every call has been returned, and no estimate is sitting unanswered. Nothing on this screen needs you.</p>" +
           '<div class="cleared-tally">' +
             '<div class="ct"><div class="v tab">' + prog.done + '</div><div class="l">Items cleared</div></div>' +
-            '<div class="ct"><div class="v tab" style="color:var(--good-text)">' + money(state.recovered) + '</div><div class="l">Chased today</div></div>' +
+            '<div class="ct"><div class="v tab" style="color:var(--good-text)">' + money(0) + '</div><div class="l">Chased today</div></div>' +
             '<div class="ct"><div class="v tab">' + state.scheduled.length + '</div><div class="l">Scheduled ahead</div></div>' +
           "</div>" +
         "</div>";
@@ -840,35 +909,35 @@
       '<div class="attention-head" style="justify-content:space-between;">' +
         '<div style="display:flex;align-items:center;gap:8px;">' +
           '<span class="sev ' + (items.length ? "critical" : "") + '" style="' + (items.length ? "" : "background:var(--good)") + '"></span>' +
-          "<h2>" + (items.length ? "Needs attention today" : "All clear \u2014 nothing needs you right now") + "</h2>" +
-          (items.length ? '<span class="count">\u2014 ' + items.length + " item" + (items.length > 1 ? "s" : "") + "</span>" : "") +
+          "<h2>" + (items.length ? "Needs attention today" : "All clear — nothing needs you right now") + "</h2>" +
+          (items.length ? '<span class="count">— ' + items.length + " item" + (items.length > 1 ? "s" : "") + "</span>" : "") +
         "</div>" + ring +
       "</div>" + attentionInner +
     "</div>" +
 
     (state.scheduled.length ?
       '<div class="panel" style="margin-bottom:22px;">' +
-        '<div class="panel-head"><h2>Scheduled follow-ups <span class="sub">\u2014 decided in advance</span></h2>' +
+        '<div class="panel-head"><h2>Scheduled follow-ups <span class="sub">— decided in advance</span></h2>' +
         '<span class="sub">' + state.scheduled.length + " committed</span></div>" +
         "<div>" + state.scheduled.map(s =>
           '<div class="sched-item">' +
-            '<span class="sched-when">' + esc(s.trigger) + "</span>" +
-            '<div class="sched-body"><div class="st">' + esc(s.label) + '</div><div class="sd">' + esc(s.detail) + "</div></div>" +
+            '<span class="sched-when">' + esc(s.trigger_label) + "</span>" +
+            '<div class="sched-body"><div class="st">' + esc(s.label) + '</div><div class="sd">Committed ' + new Date(s.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" }) + "</div></div>" +
             '<button class="btn btn-ghost btn-sm" data-action="do-scheduled" data-id="' + s.id + '">Do it now</button>' +
             '<button class="btn btn-ghost btn-sm" data-action="drop-scheduled" data-id="' + s.id + '">Drop</button>' +
           "</div>").join("") + "</div>" +
       "</div>" : "") +
 
     '<div class="kpi-row">' +
-      kpi("Revenue, month to date", money(collectedMTD()), "&#8593; 12%", "good", "0,24 33,20 66,18 100,12 133,10 166,6 200,2", "var(--good)", "vs. " + money(state.revenue[4].collected) + " in July", "goto-payments") +
-      kpi("Open balance (AR)", money(out), od.length + " overdue", od.length ? "bad" : "neutral", "0,10 33,14 66,12 100,18 133,16 166,22 200,20", "var(--critical)", "US small-biz average: " + money(BENCH.avgOwed), "goto-payments") +
-      kpi("Unreturned contacts", String(missedNoCallback().length + state.messages.filter(m => m.unread).length), missedNoCallback().length ? "action needed" : "clear", missedNoCallback().length ? "bad" : "good", "0,22 33,18 66,20 100,14 133,10 166,12 200,4", "var(--seq-500)", "Missed calls + unread messages", "goto-inbox") +
+      kpi("Revenue, month to date", money(summary.collected_this_month_cents), "&#8593;", "good", "0,24 33,20 66,18 100,12 133,10 166,6 200,2", "var(--good)", money(summary.billed_this_month_cents) + " billed this month", "goto-payments") +
+      kpi("Open balance (AR)", money(out), od.length + " overdue", od.length ? "bad" : "neutral", "0,10 33,14 66,12 100,18 133,16 166,22 200,20", "var(--critical)", (summary.overdue_count || 0) + " invoices past due", "goto-payments") +
+      kpi("Unreturned contacts", String(summary.unreturned_count || 0), missedNoCallback().length ? "action needed" : "clear", missedNoCallback().length ? "bad" : "good", "0,22 33,18 66,20 100,14 133,10 166,12 200,4", "var(--seq-500)", "Missed calls + unread messages", "goto-inbox") +
       kpi("Avg. response time", "9 min", "&#8595; 13 min", "good", "0,4 33,8 66,10 100,14 133,18 166,22 200,24", "var(--good)", "Faster replies win more of these jobs", "explain-response") +
     "</div>" +
 
     '<div class="content-grid">' +
       '<div class="panel">' +
-        '<div class="panel-head"><h2>Inbox <span class="sub">\u2014 calls, texts &amp; email</span></h2>' +
+        '<div class="panel-head"><h2>Inbox <span class="sub">— calls, texts &amp; email</span></h2>' +
         '<button class="link-btn" data-action="nav" data-page="inbox">View all</button></div>' +
         '<div>' + state.messages.slice(0, 6).map(inboxRow).join("") + "</div>" +
       "</div>" +
@@ -886,13 +955,13 @@
               '<div class="lg"><span class="sw" style="background:var(--seq-300);opacity:0.45;"></span>Billed</div>' +
               '<div class="lg"><span class="sw" style="background:var(--seq-500);"></span>Collected</div>' +
             "</div>" +
-            '<div class="bars">' + state.revenue.map(r =>
+            '<div class="bars">' + revenue.map(r =>
               '<div class="bar-group">' +
-                '<div class="bar-stack" data-action="explain-month" data-month="' + r.m + '" title="' + r.m + ': billed ' + money(r.billed) + ', collected ' + money(r.collected) + '">' +
-                  '<div class="bar-billed" style="height:' + (r.billed / maxBar * 100) + '%"></div>' +
-                  '<div class="bar-collected" style="height:' + (r.collected / maxBar * 100) + '%"></div>' +
+                '<div class="bar-stack" data-action="explain-month" data-month="' + r.month + '" title="' + r.month + ': billed ' + money(r.billed_cents) + ', collected ' + money(r.collected_cents) + '">' +
+                  '<div class="bar-billed" style="height:' + (r.billed_cents / maxBar * 100) + '%"></div>' +
+                  '<div class="bar-collected" style="height:' + (r.collected_cents / maxBar * 100) + '%"></div>' +
                 "</div>" +
-                '<div class="bar-month">' + r.m + "</div>" +
+                '<div class="bar-month">' + r.month.slice(5) + "</div>" +
               "</div>").join("") + "</div>" +
           "</div>" +
         "</div>" +
@@ -900,7 +969,7 @@
         '<div class="panel">' +
           '<div class="panel-head"><h2>Outstanding invoices</h2>' +
           '<button class="link-btn" data-action="nav" data-page="payments">Manage</button></div>' +
-          '<div>' + state.invoices.filter(i => i.status !== "paid").slice(0, 4).map(invMiniRow).join("") + "</div>" +
+          '<div>' + invoiceViews().filter(i => i.status !== "paid").slice(0, 4).map(invMiniRow).join("") + "</div>" +
         "</div>" +
       "</div>" +
     "</div>";
@@ -913,16 +982,16 @@
       '<div class="kpi-delta ' + tone + '">' + delta + "</div></div>" +
       '<svg class="spark" viewBox="0 0 200 30" preserveAspectRatio="none" aria-hidden="true">' +
         '<polyline points="' + points + '" fill="none" stroke="' + stroke + '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
-      '<div class="kpi-foot">' + foot + "</div>" +
+      '<div class="kpi-foot">' + esc(foot) + "</div>" +
     "</button>";
   }
 
   function inboxRow(m) {
-    return '<div class="inbox-item' + (m.unread ? " unread" : "") + '">' +
-      '<div class="chan-ico ' + m.chan + '">' + CHAN_ICO[m.chan] + "</div>" +
+    return '<div class="inbox-item' + (Number(m.unread) ? " unread" : "") + '">' +
+      '<div class="chan-ico ' + m.channel + '">' + CHAN_ICO[m.channel] + "</div>" +
       '<div class="inbox-main">' +
-        '<div class="inbox-top"><span class="inbox-name">' + esc(m.who) + '</span><span class="inbox-time">' + esc(m.when) + "</span></div>" +
-        '<div class="inbox-snippet">' + esc(m.snippet) + "</div>" +
+        '<div class="inbox-top"><span class="inbox-name">' + esc(msgWho(m)) + '</span><span class="inbox-time">' + timeAgo(m.occurred_at) + "</span></div>" +
+        '<div class="inbox-snippet">' + esc(msgSnippet(m)) + "</div>" +
         '<div class="inbox-bottom">' +
           '<span class="pill ' + m.status + '">' + m.status.toUpperCase() + "</span>" +
           (m.status === "missed" ? '<button class="btn btn-ghost btn-sm" data-action="call-back" data-id="' + m.id + '">Call back</button>' : "") +
@@ -936,12 +1005,12 @@
 
   function invMiniRow(i) {
     const pillMap = { overdue: "missed", sent: "waiting", draft: "draft", paid: "done" };
-    const lbl = i.status === "overdue" ? "OVERDUE " + i.days + "D" : i.status === "sent" ? "SENT " + i.days + "D" : i.status.toUpperCase();
+    const lbl = i.status === "overdue" ? "OVERDUE " + i.days + "D" : i.status === "sent" ? "SENT" : i.status.toUpperCase();
     return '<div class="inbox-item" style="align-items:center;">' +
       '<div class="inbox-main" style="display:flex;align-items:center;justify-content:space-between;gap:10px;">' +
-        '<div><div style="font-weight:600;font-size:13px;">' + esc(i.who) + '</div><div class="sub" style="color:var(--ink-muted);font-size:11.5px;">#' + i.num + "</div></div>" +
+        '<div><div style="font-weight:600;font-size:13px;">' + esc(i.who) + '</div><div class="sub" style="color:var(--ink-muted);font-size:11.5px;">' + esc(i.num) + "</div></div>" +
         '<span class="pill ' + pillMap[i.status] + '">' + lbl + "</span>" +
-        '<div class="tab" style="font-weight:600;">' + money(i.amount) + "</div>" +
+        '<div class="tab" style="font-weight:600;">' + money(i.amount_cents) + "</div>" +
       "</div>" +
     "</div>";
   }
@@ -964,9 +1033,9 @@
   function pageInbox() {
     const f = state.inboxFilter;
     let list = state.messages.slice();
-    if (f === "unread") list = list.filter(m => m.unread);
+    if (f === "unread") list = list.filter(m => Number(m.unread));
     else if (f === "missed") list = list.filter(m => m.status === "missed");
-    else if (f !== "all") list = list.filter(m => m.chan === f);
+    else if (f !== "all") list = list.filter(m => m.channel === f);
 
     const chips = [["all", "All"], ["call", "Calls"], ["text", "Texts"], ["email", "Email"], ["walkin", "Walk-ins"], ["unread", "Unread"], ["missed", "Missed"]];
 
@@ -988,20 +1057,20 @@
 
   function pagePayments() {
     const f = state.invoiceFilter;
-    let list = state.invoices.slice();
+    let list = invoiceViews();
     if (f !== "all") list = list.filter(i => i.status === f);
     const buckets = agingBuckets();
     const maxB = Math.max.apply(null, buckets.map(b => b.total).concat([1]));
-    const out = outstanding();
-    const paidTotal = state.invoices.filter(i => i.status === "paid").reduce((s, i) => s + i.amount, 0);
+    const out = outstanding_cents();
+    const paidTotal = invoiceViews().filter(i => i.status === "paid").reduce((s, i) => s + i.amount_cents, 0);
     const chips = [["all", "All"], ["overdue", "Overdue"], ["sent", "Sent"], ["draft", "Drafts"], ["paid", "Paid"]];
 
     return '<div class="page-head"><h1>Payments</h1><p>What’s owed, how old it is, and who to chase first.</p></div>' +
 
     '<div class="kpi-row" style="grid-template-columns:repeat(3,1fr);">' +
-      kpi("Outstanding", money(out), overdueList().length + " overdue", overdueList().length ? "bad" : "good", "0,10 33,14 66,12 100,18 133,16 166,22 200,20", "var(--critical)", "56% of US small businesses carry unpaid invoices", "noop") +
-      kpi("Collected this month", money(paidTotal), "&#8593; 8%", "good", "0,24 33,20 66,18 100,12 133,10 166,6 200,2", "var(--good)", "Across " + state.invoices.filter(i => i.status === "paid").length + " settled invoices", "noop") +
-      kpi("Oldest unpaid", Math.max.apply(null, overdueList().map(i => i.days).concat([0])) + " days", "past terms", "bad", "0,6 33,9 66,12 100,14 133,17 166,20 200,24", "var(--critical)", "Industry: ~1 in 10 invoices pass 30 days", "noop") +
+      kpi("Outstanding", money(out), overdueViews().length + " overdue", overdueViews().length ? "bad" : "good", "0,10 33,14 66,12 100,18 133,16 166,22 200,20", "var(--critical)", "56% of US small businesses carry unpaid invoices", "noop") +
+      kpi("Collected this month", money(paidTotal), "&#8593;", "good", "0,24 33,20 66,18 100,12 133,10 166,6 200,2", "var(--good)", "Across " + invoiceViews().filter(i => i.status === "paid").length + " settled invoices", "noop") +
+      kpi("Oldest unpaid", Math.max.apply(null, overdueViews().map(i => i.days).concat([0])) + " days", "past terms", "bad", "0,6 33,9 66,12 100,14 133,17 166,20 200,24", "var(--critical)", "Industry: ~1 in 10 invoices pass 30 days", "noop") +
     "</div>" +
 
     '<div class="content-grid">' +
@@ -1015,11 +1084,11 @@
         "</tr></thead><tbody>" +
         (list.length ? list.map(i => {
           const pillMap = { overdue: "missed", sent: "waiting", draft: "draft", paid: "done" };
-          const lbl = i.status === "overdue" ? "OVERDUE " + i.days + "D" : i.status === "sent" ? "SENT " + i.days + "D" : i.status.toUpperCase();
+          const lbl = i.status === "overdue" ? "OVERDUE " + i.days + "D" : i.status === "sent" ? "SENT" : i.status.toUpperCase();
           return "<tr>" +
-            '<td><div class="who">' + esc(i.who) + '</div><div class="sub">#' + i.num + " · " + esc(i.desc) + "</div></td>" +
+            '<td><div class="who">' + esc(i.who) + '</div><div class="sub">' + esc(i.num) + " · " + esc(i.desc) + "</div></td>" +
             '<td><span class="pill ' + pillMap[i.status] + '">' + lbl + "</span></td>" +
-            '<td class="right tab" style="font-weight:600;' + (i.status === "paid" ? "color:var(--ink-muted);" : "") + '">' + money(i.amount) + "</td>" +
+            '<td class="right tab" style="font-weight:600;' + (i.status === "paid" ? "color:var(--ink-muted);" : "") + '">' + money(i.amount_cents) + "</td>" +
             '<td class="right"><div class="row-actions">' +
               (i.status === "overdue" ? '<button class="btn btn-ghost btn-sm" data-action="remind-invoice" data-id="' + i.id + '">Remind</button>' : "") +
               (i.status === "draft" ? '<button class="btn btn-ghost btn-sm" data-action="send-invoice" data-id="' + i.id + '">Send</button>' : "") +
@@ -1038,7 +1107,7 @@
               '<div class="aging-row">' +
                 '<div class="lbl">' + b.lbl + "</div>" +
                 '<div class="aging-track"><div class="aging-fill" style="width:' + (b.total / maxB * 100) + "%;background:" + b.color + ';"></div></div>' +
-                '<div class="val tab">' + money(b.total) + "</div>" +
+                '<div class="val tab">' + money(b.total * 100) + "</div>" +
               "</div>").join("") +
           "</div>" +
           '<div class="kpi-foot" style="margin-top:12px;">Anything past 60 days collects at a materially lower rate — chase the dark bars first.</div>' +
@@ -1048,7 +1117,7 @@
         '<div class="panel">' +
           '<div class="panel-head"><h2>Bulk actions</h2></div>' +
           '<div class="panel-pad" style="display:grid;gap:9px;">' +
-            '<button class="btn btn-ghost" style="justify-content:center;" data-action="remind-all">Send reminder to all ' + overdueList().length + " overdue</button>" +
+            '<button class="btn btn-ghost" style="justify-content:center;" data-action="remind-all">Send reminder to all ' + overdueViews().length + " overdue</button>" +
             '<button class="btn btn-ghost" style="justify-content:center;" data-action="export-csv">Export statement (CSV)</button>' +
             '<button class="btn btn-ghost" style="justify-content:center;" data-action="new-invoice">Create invoice</button>' +
           "</div>" +
@@ -1058,7 +1127,7 @@
   }
 
   function pageContacts() {
-    let list = state.contacts.slice();
+    let list = contactViews();
     if (state.contactSort === "recent") list.sort((a, b) => a.lastTs - b.lastTs);
     else if (state.contactSort === "value") list.sort((a, b) => b.ltv - a.ltv);
     else if (state.contactSort === "stale") list.sort((a, b) => b.lastTs - a.lastTs);
@@ -1094,33 +1163,42 @@
 
   function pageSettings() {
     const s = state.settings;
+    const ss = state.serverSettings;
     const accents = ["#0f7d72", "#c4291d", "#b08d4f", "#4f6b4a", "#256abf", "#e2637a"];
 
+    const thresholds = [
+      ["Stale enquiry", "No reply after this many days", "intakeStaleDays", 1, 14, " days"],
+      ["Stale job", "Job open longer than", "jobStaleDays", 1, 30, " days"],
+      ["Draft invoice reminder", "Nudge unsent drafts after", "draftInvoiceDays", 1, 14, " days"],
+      ["Uninvoiced job reminder", "Nudge unbilled finished work after", "uninvoicedJobDays", 1, 14, " days"],
+      ["Overdue grace period", "Days of slack before an invoice counts as late", "overdueGraceDays", 0, 14, " days"],
+    ];
+    const notifications = [
+      ["Missed call alerts", "Push the moment a call goes unanswered", "notifyMissedCall"],
+      ["Overdue invoice alerts", "Daily nudge while anything is past terms", "notifyOverdue"],
+      ["Daily digest email", "One 7am summary instead of live pings", "notifyDailyDigest"],
+      ["SMS to owner", "Text the owner, not just the dashboard", "notifySms"],
+      ["Auto-send reminders", "Chase overdue invoices without asking", "autoRemind"],
+    ];
+
     return '<div class="page-head"><h1>Settings</h1><p>The white-label layer. Everything here is per-deployment — the engine underneath never changes.</p></div>' +
-      '<div class="note">Changing a threshold immediately re-evaluates the attention queue on Overview. That is the actual behaviour, not a mock — set the invoice chase to 60 days and watch two items disappear.</div>' +
+      '<div class="note">Follow-up thresholds and notifications below are saved to the server immediately and re-evaluate the attention queue on Overview. Branding, vocabulary and modules stay environment variables — set once at deploy, changed by redeploying.</div>' +
       '<div class="set-grid">' +
         '<div class="stack">' +
           '<div class="panel">' +
             '<div class="panel-head"><h2>Follow-up thresholds</h2></div>' +
-            thresholdRow("Stale enquiry", "No reply after this many days", "staleEnquiry", 1, 14, s.staleEnquiry, " days") +
-            thresholdRow("Overdue job", "Job open longer than", "overdueJob", 12, 168, s.overdueJob, " hrs") +
-            thresholdRow("Invoice chase", "Chase unpaid invoices after", "invoiceChase", 7, 90, s.invoiceChase, " days") +
-            thresholdRow("Reconnect", "Nudge quiet customers after", "reconnect", 30, 540, s.reconnect, " days") +
+            thresholds.map(t => thresholdRow(t[0], t[1], t[2], t[3], t[4], Number(ss[t[2]] ?? 0), t[5])).join("") +
           "</div>" +
 
           '<div class="panel">' +
             '<div class="panel-head"><h2>Notifications</h2></div>' +
-            toggleRow("Missed call alerts", "Push the moment a call goes unanswered", "notifyMissedCall", s.notifyMissedCall) +
-            toggleRow("Overdue invoice alerts", "Daily nudge while anything is past terms", "notifyOverdue", s.notifyOverdue) +
-            toggleRow("Daily digest email", "One 7am summary instead of live pings", "notifyDailyDigest", s.notifyDailyDigest) +
-            toggleRow("SMS to owner", "Text the owner, not just the dashboard", "notifySms", s.notifySms) +
-            toggleRow("Auto-send reminders", "Chase overdue invoices without asking", "autoRemind", s.autoRemind) +
+            notifications.map(n => toggleRow(n[0], n[1], n[2], Boolean(ss[n[2]]))).join("") +
           "</div>" +
         "</div>" +
 
         '<div class="stack">' +
           '<div class="panel">' +
-            '<div class="panel-head"><h2>Branding &amp; vocabulary</h2></div>' +
+            '<div class="panel-head"><h2>Branding &amp; vocabulary</h2><span class="sub">env vars — cosmetic preview only</span></div>' +
             '<div class="panel-pad">' +
               '<div class="field"><label>Accent colour</label><div class="swatch-row">' +
                 accents.map(a => '<button class="swatch ' + (s.accent === a ? "sel" : "") + '" style="background:' + a + '" data-action="set-accent" data-color="' + a + '" aria-label="Accent ' + a + '"></button>').join("") +
@@ -1173,6 +1251,8 @@
     $("#userTenant").textContent = state.tenant;
     $("#userInitials").textContent = initials(state.tenant);
     document.documentElement.style.setProperty("--brand", state.settings.accent);
+    if (state.loading) { $("#view").innerHTML = pageLoading(); return; }
+    if (state.loadError) { $("#view").innerHTML = pageError(); return; }
     const map = { overview: pageOverview, inbox: pageInbox, payments: pagePayments, contacts: pageContacts, settings: pageSettings };
     $("#view").innerHTML = (map[state.page] || pageOverview)();
     window.scrollTo(0, 0);
@@ -1189,15 +1269,52 @@
   }
   function closeModal() { $("#modalRoot").innerHTML = ""; }
 
+  // ============ data loading ============
+  async function refreshQueueAndProgress() {
+    const [queue, progress] = await Promise.all([api("GET", "/api/queue"), api("GET", "/api/queue/progress")]);
+    state.queue = queue;
+    state.progress = progress;
+  }
+  async function refreshMessages() { state.messages = await api("GET", "/api/messages"); }
+  async function refreshInvoices() { state.invoices = await api("GET", "/api/invoices"); }
+  async function refreshContacts() { state.contacts = await api("GET", "/api/contacts"); }
+  async function refreshSettings() { state.serverSettings = await api("GET", "/api/settings"); }
+  async function refreshScheduled() { state.scheduled = await api("GET", "/api/followups"); }
+  async function refreshSummary() { state.summary = await api("GET", "/api/dashboard/summary"); }
+  async function refreshAging() { state.aging = await api("GET", "/api/invoices/aging"); }
+
+  async function loadAll() {
+    state.loading = true; state.loadError = null; render();
+    try {
+      const [config, triggerOptions] = await Promise.all([
+        api("GET", "/api/config").catch(() => null),
+        api("GET", "/api/followups/options").catch(() => []),
+      ]);
+      state.config = config;
+      state.triggerOptions = triggerOptions;
+      await Promise.all([
+        refreshMessages(), refreshInvoices(), refreshContacts(), refreshSettings(),
+        refreshScheduled(), refreshSummary(), refreshAging(),
+        api("GET", "/api/dashboard/trend").then(r => { state.revenue = r; }),
+      ]);
+      await refreshQueueAndProgress();
+      state.loading = false;
+    } catch (e) {
+      state.loading = false;
+      state.loadError = e.message || String(e);
+    }
+    render();
+  }
+
   // ============ actions ============
   const actions = {
-    nav(el) { state.page = el.dataset.page; state.selectedContact = null; render(); },
+    nav(el) { state.page = el.dataset.page; render(); },
     noop() {},
 
     range(el) {
       state.range = +el.dataset.range;
       document.querySelectorAll("#rangeSeg button").forEach(b => b.classList.toggle("active", b === el));
-      toast("Range set to " + state.range + " days", "Figures and charts refreshed.", "info");
+      toast("Range set to " + state.range + " days", "", "info");
     },
 
     "goto-payments"() { state.page = "payments"; render(); },
@@ -1213,16 +1330,16 @@
     },
 
     "explain-month"(el) {
-      const r = state.revenue.find(x => x.m === el.dataset.month);
+      const r = state.revenue.find(x => x.month === el.dataset.month);
       if (!r) return;
-      const gap = r.billed - r.collected;
-      openModal(r.m + " — billed vs. collected",
+      const gap = r.billed_cents - r.collected_cents;
+      openModal(r.month + " — billed vs. collected",
         "<div class='cd-stats'>" +
-          "<div class='cd-stat'><div class='l'>Billed</div><div class='v tab'>" + money(r.billed) + "</div></div>" +
-          "<div class='cd-stat'><div class='l'>Collected</div><div class='v tab'>" + money(r.collected) + "</div></div>" +
+          "<div class='cd-stat'><div class='l'>Billed</div><div class='v tab'>" + money(r.billed_cents) + "</div></div>" +
+          "<div class='cd-stat'><div class='l'>Collected</div><div class='v tab'>" + money(r.collected_cents) + "</div></div>" +
           "<div class='cd-stat'><div class='l'>Gap</div><div class='v tab' style='color:var(--critical-text)'>" + money(gap) + "</div></div>" +
         "</div>" +
-        "<p style='font-size:13px;margin-bottom:0;'>" + money(gap) + " was invoiced in " + r.m + " and never landed. That gap is what the AR aging panel on Payments is tracking.</p>",
+        "<p style='font-size:13px;margin-bottom:0;'>" + money(gap) + " was invoiced in " + r.month + " and never landed. That gap is what the AR aging panel on Payments is tracking.</p>",
         '<button class="btn btn-ghost" data-action="close-modal">Close</button>' +
         '<button class="btn btn-primary" data-action="goto-payments-close">Open Payments</button>');
     },
@@ -1230,24 +1347,29 @@
 
     // ---- inbox ----
     "inbox-filter"(el) { state.inboxFilter = el.dataset.filter; render(); },
-    "mark-all-read"() {
-      const n = unreadCount();
-      state.messages.forEach(m => { m.unread = false; });
-      render();
-      toast(n ? n + " marked read" : "Already all read", n ? "Inbox badge cleared." : "", n ? null : "info");
+    "mark-all-read"(el) {
+      return withPending(el, async () => {
+        const n = unreadCount();
+        await api("POST", "/api/messages/mark-all-read");
+        await refreshMessages();
+        render();
+        toast(n ? n + " marked read" : "Already all read", n ? "Inbox badge cleared." : "", n ? null : "info");
+      });
     },
     "mark-done"(el) {
-      const m = state.messages.find(x => x.id === +el.dataset.id);
-      if (!m) return;
-      m.status = "done"; m.unread = false;
-      render();
-      toast("Marked done", m.who + " — cleared from the queue.");
+      return withPending(el, async () => {
+        const m = state.messages.find(x => x.id === +el.dataset.id);
+        await api("PATCH", "/api/messages/" + el.dataset.id, { status: "done", unread: false });
+        await refreshMessages();
+        render();
+        toast("Marked done", m ? msgWho(m) + " — cleared from the queue." : "");
+      });
     },
     "call-back"(el) {
       const m = state.messages.find(x => x.id === +el.dataset.id);
       if (!m) return;
-      openModal("Log a callback — " + esc(m.who),
-        "<p style='margin-top:0;font-size:13px;color:var(--ink-secondary);'>Calling " + esc(m.phone) + ". Log the outcome so it leaves the attention queue.</p>" +
+      openModal("Log a callback — " + esc(msgWho(m)),
+        "<p style='margin-top:0;font-size:13px;color:var(--ink-secondary);'>Calling " + esc((m.contact && m.contact.phone) || "") + ". Log the outcome so it leaves the attention queue.</p>" +
         '<div class="field"><label for="cb-outcome">Outcome</label><select id="cb-outcome">' +
           "<option>Reached — booked them in</option><option>Reached — quoted, will decide</option><option>No answer, left voicemail</option><option>Wrong number</option>" +
         "</select></div>" +
@@ -1256,37 +1378,39 @@
         '<button class="btn btn-primary" data-action="confirm-callback" data-id="' + m.id + '">Log callback</button>');
     },
     "confirm-callback"(el) {
-      const m = state.messages.find(x => x.id === +el.dataset.id);
-      const outcome = $("#cb-outcome") ? $("#cb-outcome").value : "Logged";
-      if (m) {
-        m.status = "done"; m.unread = false;
-        m.snippet = "Callback logged — " + outcome;
-        m.when = "just now"; m.ts = 0;
-        recordCleared(0);
-      }
-      closeModal(); render();
-      toast("Callback logged", (m ? m.who : "Contact") + " — " + outcome);
+      return withPending(el, async () => {
+        const m = state.messages.find(x => x.id === +el.dataset.id);
+        const outcome = $("#cb-outcome") ? $("#cb-outcome").value : "Logged";
+        await api("PATCH", "/api/messages/" + el.dataset.id, { status: "done", unread: false });
+        await refreshMessages();
+        closeModal(); render();
+        toast("Callback logged", (m ? msgWho(m) : "Contact") + " — " + outcome);
+      });
     },
     reply(el) {
       const m = state.messages.find(x => x.id === +el.dataset.id);
       if (!m) return;
-      const templ = m.chan === "email"
-        ? "Hi " + m.who.split(" ").slice(-1)[0] + ",\n\nThanks for reaching out — resending that now. Let me know if anything looks off.\n\nRedline Auto Works"
-        : "Hi " + m.who.split(" ").slice(-1)[0] + " — yes, today works. Bring it by any time before 5 and we'll take a look.";
-      openModal("Reply to " + esc(m.who) + " · " + CHAN_LBL[m.chan],
-        "<div style='background:var(--page);border:1px solid var(--border);border-radius:8px;padding:11px 13px;font-size:12.5px;color:var(--ink-secondary);margin-bottom:13px;'>" + esc(m.snippet) + "</div>" +
+      const lastName = msgWho(m).split(" ").slice(-1)[0];
+      const templ = m.channel === "email"
+        ? "Hi " + lastName + ",\n\nThanks for reaching out — resending that now. Let me know if anything looks off.\n\n" + esc(state.tenant)
+        : "Hi " + lastName + " — yes, today works. Bring it by any time before 5 and we'll take a look.";
+      openModal("Reply to " + esc(msgWho(m)) + " · " + CHAN_LBL[m.channel],
+        "<div style='background:var(--page);border:1px solid var(--border);border-radius:8px;padding:11px 13px;font-size:12.5px;color:var(--ink-secondary);margin-bottom:13px;'>" + esc(msgSnippet(m)) + "</div>" +
         '<div class="field"><label for="rp-body">Your reply</label><textarea id="rp-body" style="min-height:110px;">' + esc(templ) + "</textarea></div>" +
         "<div style='font-size:11.5px;color:var(--ink-muted);'>Pre-filled from your saved template — edit before sending.</div>",
         '<button class="btn btn-ghost" data-action="close-modal">Cancel</button>' +
-        '<button class="btn btn-primary" data-action="confirm-reply" data-id="' + m.id + '">Send ' + CHAN_LBL[m.chan].toLowerCase() + "</button>", true);
+        '<button class="btn btn-primary" data-action="confirm-reply" data-id="' + m.id + '">Send ' + CHAN_LBL[m.channel].toLowerCase() + "</button>", true);
     },
     "confirm-reply"(el) {
-      const m = state.messages.find(x => x.id === +el.dataset.id);
-      const body = $("#rp-body") ? $("#rp-body").value.trim() : "";
-      if (!body) { toast("Nothing to send", "Write something first.", "err"); return; }
-      if (m) { m.status = "done"; m.unread = false; m.snippet = "You replied: " + body.split("\n")[0].slice(0, 60); m.when = "just now"; m.ts = 0; }
-      closeModal(); render();
-      toast("Reply sent", (m ? m.who : "") + " — thread closed.");
+      return withPending(el, async () => {
+        const m = state.messages.find(x => x.id === +el.dataset.id);
+        const body = $("#rp-body") ? $("#rp-body").value.trim() : "";
+        if (!body) { toast("Nothing to send", "Write something first.", "err"); return; }
+        await api("POST", "/api/messages/" + el.dataset.id + "/reply", { body });
+        await refreshMessages();
+        closeModal(); render();
+        toast("Reply sent", (m ? msgWho(m) : "") + " — thread closed.");
+      });
     },
 
     // ---- capture ----
@@ -1295,130 +1419,135 @@
         '<button class="btn btn-ghost" data-action="close-modal">Cancel</button>', false);
     },
     "save-capture"(el) {
-      const p = el.dataset.prefix;
-      const nameEl = $("#" + p + "-name");
-      const name = nameEl ? nameEl.value.trim() : "";
-      const fieldWrap = $("#" + p + "-nameF");
-      if (!name) {
-        if (fieldWrap) fieldWrap.classList.add("invalid");
-        if (nameEl) nameEl.focus();
-        toast("Name required", "Every logged activity files against a contact.", "err");
-        return;
-      }
-      if (fieldWrap) fieldWrap.classList.remove("invalid");
-      const chan = $("#" + p + "-chan") ? $("#" + p + "-chan").value : "call";
-      const phone = $("#" + p + "-phone") ? $("#" + p + "-phone").value.trim() : "";
-      const note = $("#" + p + "-note") ? $("#" + p + "-note").value.trim() : "";
+      return withPending(el, async () => {
+        const p = el.dataset.prefix;
+        const nameEl = $("#" + p + "-name");
+        const name = nameEl ? nameEl.value.trim() : "";
+        const fieldWrap = $("#" + p + "-nameF");
+        if (!name) {
+          if (fieldWrap) fieldWrap.classList.add("invalid");
+          if (nameEl) nameEl.focus();
+          toast("Name required", "Every logged activity files against a contact.", "err");
+          return;
+        }
+        if (fieldWrap) fieldWrap.classList.remove("invalid");
+        const channel = $("#" + p + "-chan") ? $("#" + p + "-chan").value : "call";
+        const phone = $("#" + p + "-phone") ? $("#" + p + "-phone").value.trim() : "";
+        const note = $("#" + p + "-note") ? $("#" + p + "-note").value.trim() : "";
 
-      state.messages.unshift({
-        id: nid(), chan: chan, who: name, phone: phone || "—",
-        snippet: note || CHAN_LBL[chan] + " logged manually",
-        when: "just now", ts: 0, status: "new", unread: true
+        await api("POST", "/api/messages", { name, phone, channel, note });
+        await Promise.all([refreshMessages(), refreshContacts()]);
+        closeModal(); render();
+        toast("Logged to inbox", name + " · " + CHAN_LBL[channel] + (note ? " — note saved" : ""));
       });
-      if (!state.contacts.some(c => c.name.toLowerCase() === name.toLowerCase())) {
-        state.contacts.unshift({
-          id: nid(), name: name, phone: phone || "—", email: "—",
-          vehicle: "Not recorded", ltv: 0, visits: 0, last: "just now", lastTs: 0, flag: "new"
-        });
-      }
-      closeModal(); render();
-      toast("Logged to inbox", name + " · " + CHAN_LBL[chan] + (note ? " — note saved" : ""));
     },
 
     // ---- invoices ----
     "invoice-filter"(el) { state.invoiceFilter = el.dataset.filter; render(); },
     "remind-invoice"(el) {
-      const inv = state.invoices.find(x => x.id === +el.dataset.id);
-      if (!inv) return;
-      const tone = inv.days > 60 ? "firm" : "gentle";
-      openModal("Payment reminder — #" + inv.num,
-        "<p style='margin-top:0;font-size:13px;color:var(--ink-secondary);'>" + esc(inv.who) + " · " + money(inv.amount) + " · <strong>" + inv.days + " days overdue</strong></p>" +
+      const iv = invoiceView(state.invoices.find(x => x.id === +el.dataset.id));
+      if (!iv) return;
+      const tone = iv.days > 60 ? "firm" : "gentle";
+      openModal("Payment reminder — " + iv.num,
+        "<p style='margin-top:0;font-size:13px;color:var(--ink-secondary);'>" + esc(iv.who) + " · " + money(iv.amount_cents) + " · <strong>" + iv.days + " days overdue</strong></p>" +
         '<div class="field"><label for="rm-tone">Tone</label><select id="rm-tone">' +
           '<option value="gentle"' + (tone === "gentle" ? " selected" : "") + ">Gentle — good payer, first nudge</option>" +
           '<option value="firm"' + (tone === "firm" ? " selected" : "") + ">Firm — repeat late, past 60 days</option>" +
           '<option value="final">Final notice — before collections</option>' +
         "</select></div>" +
-        '<div class="field"><label for="rm-body">Message</label><textarea id="rm-body" style="min-height:100px;">Hi ' + esc(inv.who.split(" ").slice(-1)[0]) +
-          ", quick note that invoice #" + inv.num + " for " + money(inv.amount) + " is now " + inv.days + " days past due. Happy to take payment over the phone if that's easier.</textarea></div>" +
+        '<div class="field"><label for="rm-body">Message</label><textarea id="rm-body" style="min-height:100px;">Hi ' + esc(iv.who.split(" ").slice(-1)[0]) +
+          ", quick note that invoice " + iv.num + " for " + money(iv.amount_cents) + " is now " + iv.days + " days past due. Happy to take payment over the phone if that's easier.</textarea></div>" +
         "<div style='font-size:11.5px;color:var(--ink-muted);'>Tone auto-selected from this customer's payment history.</div>",
         '<button class="btn btn-ghost" data-action="close-modal">Cancel</button>' +
-        '<button class="btn btn-primary" data-action="confirm-remind" data-id="' + inv.id + '">Send reminder</button>', true);
+        '<button class="btn btn-primary" data-action="confirm-remind" data-id="' + iv.id + '">Send reminder</button>', true);
     },
     "confirm-remind"(el) {
-      const inv = state.invoices.find(x => x.id === +el.dataset.id);
-      if (inv) { inv.status = "sent"; inv.days = 0; recordCleared(inv.amount); }
-      closeModal(); render();
-      toast("Reminder sent", inv ? inv.who + " — #" + inv.num + " moved to awaiting payment." : "");
+      return withPending(el, async () => {
+        const iv = invoiceView(state.invoices.find(x => x.id === +el.dataset.id));
+        const tone = $("#rm-tone") ? $("#rm-tone").value : "gentle";
+        await api("POST", "/api/invoices/" + el.dataset.id + "/send", { tone });
+        await Promise.all([refreshInvoices(), refreshQueueAndProgress(), refreshSummary(), refreshAging()]);
+        closeModal(); render();
+        toast("Reminder sent", iv ? iv.who + " — " + iv.num + " moved to awaiting payment." : "");
+      });
     },
     "chase-estimate"(el) {
-      const inv = state.invoices.find(x => x.id === +el.dataset.id);
-      if (!inv) return;
-      inv.days = 0; recordCleared(inv.amount);
-      render();
-      toast("Follow-up sent", inv.who + " — estimate #" + inv.num + " nudged.");
+      return withPending(el, async () => {
+        const iv = invoiceView(state.invoices.find(x => x.id === +el.dataset.id));
+        await api("POST", "/api/invoices/" + el.dataset.id + "/send", { tone: "gentle" });
+        await Promise.all([refreshInvoices(), refreshQueueAndProgress()]);
+        render();
+        toast("Follow-up sent", iv ? iv.who + " — " + iv.num + " nudged." : "");
+      });
     },
     "send-invoice"(el) {
-      const inv = state.invoices.find(x => x.id === +el.dataset.id);
-      if (!inv) return;
-      inv.status = "sent"; inv.days = 0; inv.issued = "today";
-      render();
-      toast("Invoice sent", "#" + inv.num + " · " + money(inv.amount) + " to " + inv.who);
+      return withPending(el, async () => {
+        const iv = invoiceView(state.invoices.find(x => x.id === +el.dataset.id));
+        await api("POST", "/api/invoices/" + el.dataset.id + "/send", { tone: "gentle" });
+        await Promise.all([refreshInvoices(), refreshQueueAndProgress(), refreshSummary()]);
+        render();
+        toast("Invoice sent", iv ? iv.num + " · " + money(iv.amount_cents) + " to " + iv.who : "");
+      });
     },
     "mark-paid"(el) {
-      const inv = state.invoices.find(x => x.id === +el.dataset.id);
-      if (!inv) return;
-      openModal("Record payment — #" + inv.num,
-        "<p style='margin-top:0;font-size:13px;color:var(--ink-secondary);'>" + esc(inv.who) + " · " + esc(inv.desc) + "</p>" +
+      const iv = invoiceView(state.invoices.find(x => x.id === +el.dataset.id));
+      if (!iv) return;
+      openModal("Record payment — " + iv.num,
+        "<p style='margin-top:0;font-size:13px;color:var(--ink-secondary);'>" + esc(iv.who) + " · " + esc(iv.desc) + "</p>" +
         '<div class="field-row">' +
-          '<div class="field"><label for="pay-amt">Amount</label><input type="text" id="pay-amt" value="' + money(inv.amount) + '"></div>' +
-          '<div class="field"><label for="pay-method">Method</label><select id="pay-method"><option>Card</option><option>Cash</option><option>Check</option><option>Bank transfer</option></select></div>' +
+          '<div class="field"><label for="pay-amt">Amount</label><input type="text" id="pay-amt" value="' + (iv.balance_cents / 100).toFixed(2) + '"></div>' +
+          '<div class="field"><label for="pay-method">Method</label><select id="pay-method"><option>Card</option><option>Cash</option><option>Cheque</option><option>Bank transfer</option></select></div>' +
         "</div>",
         '<button class="btn btn-ghost" data-action="close-modal">Cancel</button>' +
-        '<button class="btn btn-primary" data-action="confirm-paid" data-id="' + inv.id + '">Record payment</button>');
+        '<button class="btn btn-primary" data-action="confirm-paid" data-id="' + iv.id + '">Record payment</button>');
     },
     "confirm-paid"(el) {
-      const inv = state.invoices.find(x => x.id === +el.dataset.id);
-      const method = $("#pay-method") ? $("#pay-method").value : "Card";
-      if (inv) {
-        inv.status = "paid"; inv.days = 0;
-        const c = state.contacts.find(c => c.name === inv.who);
-        if (c) { c.ltv += inv.amount; c.visits += 1; if (c.flag === "overdue") c.flag = null; }
-      }
-      closeModal(); render();
-      toast("Payment recorded", inv ? money(inv.amount) + " from " + inv.who + " · " + method : "");
+      return withPending(el, async () => {
+        const iv = invoiceView(state.invoices.find(x => x.id === +el.dataset.id));
+        const method = $("#pay-method") ? $("#pay-method").value : "Card";
+        const amtRaw = $("#pay-amt") ? $("#pay-amt").value.replace(/[^0-9.]/g, "") : "";
+        await api("POST", "/api/invoices/" + el.dataset.id + "/payments", { amount: amtRaw || undefined, method });
+        await Promise.all([refreshInvoices(), refreshContacts(), refreshQueueAndProgress(), refreshSummary(), refreshAging()]);
+        closeModal(); render();
+        toast("Payment recorded", iv ? money(iv.balance_cents) + " from " + iv.who + " · " + method : "");
+      });
     },
     "remind-all"() {
-      const od = overdueList();
+      const od = overdueViews();
       if (!od.length) { toast("Nothing overdue", "Every invoice is current.", "info"); return; }
       openModal("Send " + od.length + " reminders",
         "<p style='margin-top:0;font-size:13px;'>This will send a payment reminder to each of these, tone matched to their history:</p>" +
         "<div style='display:grid;gap:7px;'>" + od.map(i =>
           "<div style='display:flex;justify-content:space-between;background:var(--page);border:1px solid var(--border);border-radius:7px;padding:9px 12px;font-size:12.5px;'>" +
-          "<span>" + esc(i.who) + " · #" + i.num + "</span><span class='tab' style='font-weight:600;'>" + money(i.amount) + " · " + i.days + "d</span></div>").join("") + "</div>",
+          "<span>" + esc(i.who) + " · " + esc(i.num) + "</span><span class='tab' style='font-weight:600;'>" + money(i.amount_cents) + " · " + i.days + "d</span></div>").join("") + "</div>",
         '<button class="btn btn-ghost" data-action="close-modal">Cancel</button>' +
         '<button class="btn btn-primary" data-action="confirm-remind-all">Send all ' + od.length + "</button>", true);
     },
-    "confirm-remind-all"() {
-      const od = overdueList();
-      const total = od.reduce((s, i) => s + i.amount, 0);
-      od.forEach(i => { i.status = "sent"; i.days = 0; recordCleared(i.amount); });
-      closeModal(); render();
-      toast(od.length + " reminders sent", money(total) + " now chased.");
+    "confirm-remind-all"(el) {
+      return withPending(el, async () => {
+        const od = overdueViews();
+        const total = od.reduce((s, i) => s + i.amount_cents, 0);
+        const res = await api("POST", "/api/invoices/remind-overdue");
+        await Promise.all([refreshInvoices(), refreshQueueAndProgress(), refreshAging()]);
+        closeModal(); render();
+        toast((res.reminded || od.length) + " reminders sent", money(total) + " now chased.");
+      });
     },
-    "export-csv"() {
-      const rows = [["Invoice", "Customer", "Description", "Amount", "Status", "Days"]]
-        .concat(state.invoices.map(i => [i.num, i.who, i.desc, i.amount, i.status, i.days]));
-      const csv = rows.map(r => r.map(c => '"' + String(c).replace(/"/g, '""') + '"').join(",")).join("\n");
-      openModal("Statement export",
-        "<p style='margin-top:0;font-size:13px;color:var(--ink-secondary);'>" + state.invoices.length + " invoices, " + money(outstanding()) + " outstanding. Preview:</p>" +
-        "<pre style='background:var(--page);border:1px solid var(--border);border-radius:8px;padding:12px;font-size:11px;overflow-x:auto;max-height:240px;margin:0;'>" + esc(csv) + "</pre>",
-        '<button class="btn btn-primary" data-action="close-modal">Done</button>', true);
-      toast("Statement generated", state.invoices.length + " rows ready.", "info");
+    "export-csv"(el) {
+      return withPending(el, async () => {
+        const csv = await api("GET", "/api/invoices/export.csv");
+        const rowCount = csv.trim().split("\n").length - 1;
+        openModal("Statement export",
+          "<p style='margin-top:0;font-size:13px;color:var(--ink-secondary);'>" + rowCount + " invoices, " + money(outstanding_cents()) + " outstanding. Preview:</p>" +
+          "<pre style='background:var(--page);border:1px solid var(--border);border-radius:8px;padding:12px;font-size:11px;overflow-x:auto;max-height:240px;margin:0;'>" + esc(csv) + "</pre>",
+          '<button class="btn btn-primary" data-action="close-modal">Done</button>', true);
+        toast("Statement generated", rowCount + " rows ready.", "info");
+      });
     },
     "new-invoice"() {
       openModal("New invoice",
         '<div class="field" id="ni-whoF"><label for="ni-who">Customer</label><select id="ni-who">' +
-          state.contacts.map(c => "<option>" + esc(c.name) + "</option>").join("") + "</select></div>" +
+          state.contacts.map(c => '<option value="' + c.id + '">' + esc(c.name) + "</option>").join("") + "</select></div>" +
         '<div class="field"><label for="ni-desc">Description</label><input type="text" id="ni-desc" placeholder="e.g. Brake pads & rotors, rear axle"></div>' +
         '<div class="field" id="ni-amtF"><label for="ni-amt">Amount</label><input type="text" id="ni-amt" placeholder="340">' +
         '<div class="field-err">Enter a number greater than zero.</div></div>',
@@ -1427,55 +1556,63 @@
         '<button class="btn btn-primary" data-action="create-invoice" data-mode="send">Create &amp; send</button>');
     },
     "create-invoice"(el) {
-      const who = $("#ni-who") ? $("#ni-who").value : "";
-      const desc = $("#ni-desc") ? $("#ni-desc").value.trim() : "";
-      const raw = $("#ni-amt") ? $("#ni-amt").value.replace(/[^0-9.]/g, "") : "";
-      const amt = parseFloat(raw);
-      if (!amt || amt <= 0) {
-        const f = $("#ni-amtF"); if (f) f.classList.add("invalid");
-        toast("Amount required", "An invoice needs a number on it.", "err");
-        return;
-      }
-      const mode = el.dataset.mode;
-      const num = String(1056 + state.invoices.filter(i => +i.num >= 1056).length);
-      state.invoices.unshift({
-        id: nid(), num: num, who: who, desc: desc || "Service", amount: Math.round(amt),
-        status: mode === "send" ? "sent" : "draft", days: 0, issued: mode === "send" ? "today" : "—"
+      return withPending(el, async () => {
+        const whoEl = $("#ni-who");
+        const contactId = whoEl ? whoEl.value : "";
+        const desc = $("#ni-desc") ? $("#ni-desc").value.trim() : "";
+        const raw = $("#ni-amt") ? $("#ni-amt").value.replace(/[^0-9.]/g, "") : "";
+        const amt = parseFloat(raw);
+        if (!amt || amt <= 0) {
+          const f = $("#ni-amtF"); if (f) f.classList.add("invalid");
+          toast("Amount required", "An invoice needs a number on it.", "err");
+          return;
+        }
+        const mode = el.dataset.mode;
+        const contact = state.contacts.find(c => String(c.id) === String(contactId));
+        const created = await api("POST", "/api/invoices", {
+          contact_id: contactId || null,
+          status: mode === "send" ? "Sent" : "Draft",
+          items: [{ description: desc || "Service", qty: 1, unit_price: amt }],
+        });
+        await Promise.all([refreshInvoices(), refreshQueueAndProgress(), refreshSummary()]);
+        closeModal(); render();
+        toast(mode === "send" ? "Invoice sent" : "Draft saved", created.number + " · " + money(Math.round(amt * 100)) + " · " + (contact ? contact.name : ""));
       });
-      closeModal(); render();
-      toast(mode === "send" ? "Invoice sent" : "Draft saved", "#" + num + " · " + money(Math.round(amt)) + " · " + who);
     },
 
     // ---- contacts ----
     "contact-sort"(el) { state.contactSort = el.dataset.sort; render(); },
     "view-contact"(el) {
-      const c = state.contacts.find(x => x.id === +el.dataset.id);
-      if (!c) return;
-      const theirs = state.invoices.filter(i => i.who === c.name);
-      const msgs = state.messages.filter(m => m.who === c.name);
-      const owed = theirs.filter(i => i.status !== "paid" && i.status !== "draft").reduce((s, i) => s + i.amount, 0);
-      openModal(esc(c.name),
-        '<div class="contact-detail">' +
-          '<div class="cd-head"><div class="cd-avatar">' + initials(c.name) + "</div>" +
-            "<div><div style='font-weight:700;font-size:15px;'>" + esc(c.name) + "</div>" +
-            "<div style='font-size:12.5px;color:var(--ink-muted);'>" + esc(c.phone) + " · " + esc(c.email) + "</div>" +
-            "<div style='font-size:12.5px;color:var(--ink-secondary);'>" + esc(c.vehicle) + "</div></div></div>" +
-          '<div class="cd-stats">' +
-            "<div class='cd-stat'><div class='l'>Lifetime</div><div class='v tab'>" + money(c.ltv) + "</div></div>" +
-            "<div class='cd-stat'><div class='l'>Visits</div><div class='v tab'>" + c.visits + "</div></div>" +
-            "<div class='cd-stat'><div class='l'>Owes now</div><div class='v tab' style='" + (owed ? "color:var(--critical-text)" : "") + "'>" + money(owed) + "</div></div>" +
-          "</div>" +
-          "<div><div style='font-size:11px;font-weight:700;color:var(--ink-muted);letter-spacing:0.04em;text-transform:uppercase;margin-bottom:6px;'>Service history</div>" +
-          '<div class="timeline">' +
-            (theirs.length || msgs.length
-              ? msgs.concat([]).map(m => '<div class="tl-item"><span class="tl-dot"></span><div>' + esc(m.snippet) + '<div class="when">' + CHAN_LBL[m.chan] + " · " + esc(m.when) + "</div></div></div>").join("") +
-                theirs.map(i => '<div class="tl-item"><span class="tl-dot" style="background:var(--seq-500)"></span><div>' + esc(i.desc) + " — " + money(i.amount) +
-                  '<div class="when">Invoice #' + i.num + " · " + i.status + " · " + esc(i.issued) + "</div></div></div>").join("")
-              : '<div class="empty-state">No history recorded yet.</div>') +
-          "</div></div>" +
-        "</div>",
-        '<button class="btn btn-ghost" data-action="close-modal">Close</button>' +
-        '<button class="btn btn-primary" data-action="log-for-contact" data-id="' + c.id + '">Log activity</button>', true);
+      return withPending(el, async () => {
+        const full = await api("GET", "/api/contacts/" + el.dataset.id);
+        const theirs = (full.invoices || []).filter(i => i.status !== "Void");
+        const msgs = full.messages || [];
+        const owed = theirs.reduce((s, i) => s + 0, 0); // computed below from live invoice list for consistency
+        const liveViews = invoiceViews().filter(iv => String(iv.raw.contact_id) === String(full.id));
+        const owedNow = liveViews.filter(iv => iv.status === "overdue" || iv.status === "sent").reduce((s, iv) => s + iv.balance_cents, 0);
+        openModal(esc(full.name),
+          '<div class="contact-detail">' +
+            '<div class="cd-head"><div class="cd-avatar">' + initials(full.name) + "</div>" +
+              "<div><div style='font-weight:700;font-size:15px;'>" + esc(full.name) + "</div>" +
+              "<div style='font-size:12.5px;color:var(--ink-muted);'>" + esc(full.phone || "—") + " · " + esc(full.email || "—") + "</div>" +
+              "<div style='font-size:12.5px;color:var(--ink-secondary);'>" + esc(full.notes || "Not recorded") + "</div></div></div>" +
+            '<div class="cd-stats">' +
+              "<div class='cd-stat'><div class='l'>Lifetime</div><div class='v tab'>" + money(full.lifetime_paid_cents || 0) + "</div></div>" +
+              "<div class='cd-stat'><div class='l'>Invoices</div><div class='v tab'>" + theirs.length + "</div></div>" +
+              "<div class='cd-stat'><div class='l'>Owes now</div><div class='v tab' style='" + (owedNow ? "color:var(--critical-text)" : "") + "'>" + money(owedNow) + "</div></div>" +
+            "</div>" +
+            "<div><div style='font-size:11px;font-weight:700;color:var(--ink-muted);letter-spacing:0.04em;text-transform:uppercase;margin-bottom:6px;'>Service history</div>" +
+            '<div class="timeline">' +
+              (theirs.length || msgs.length
+                ? msgs.map(m => '<div class="tl-item"><span class="tl-dot"></span><div>' + esc(msgSnippet(m)) + '<div class="when">' + CHAN_LBL[m.channel] + " · " + timeAgo(m.occurred_at) + "</div></div></div>").join("") +
+                  theirs.map(i => '<div class="tl-item"><span class="tl-dot" style="background:var(--seq-500)"></span><div>' + esc((i.items || []).map(it => it.description).join(", ") || "Service") + " — " + money(i.totals ? i.totals.total : 0) +
+                    '<div class="when">' + esc(i.number) + " · " + i.status + " · " + esc(i.issue_date || "—") + "</div></div></div>").join("")
+                : '<div class="empty-state">No history recorded yet.</div>') +
+            "</div></div>" +
+          "</div>",
+          '<button class="btn btn-ghost" data-action="close-modal">Close</button>' +
+          '<button class="btn btn-primary" data-action="log-for-contact" data-id="' + full.id + '">Log activity</button>', true);
+      });
     },
     "log-for-contact"(el) {
       const c = state.contacts.find(x => x.id === +el.dataset.id);
@@ -1484,7 +1621,7 @@
         '<button class="btn btn-ghost" data-action="close-modal">Cancel</button>');
       if (c) {
         const n = $("#md-name"); if (n) n.value = c.name;
-        const p = $("#md-phone"); if (p) p.value = c.phone;
+        const p = $("#md-phone"); if (p) p.value = c.phone || "";
       }
     },
     "new-contact"() {
@@ -1499,55 +1636,71 @@
         '<button class="btn btn-ghost" data-action="close-modal">Cancel</button>' +
         '<button class="btn btn-primary" data-action="create-contact">Add contact</button>');
     },
-    "create-contact"() {
-      const name = $("#nc-name") ? $("#nc-name").value.trim() : "";
-      if (!name) {
-        const f = $("#nc-nameF"); if (f) f.classList.add("invalid");
-        toast("Name required", "", "err"); return;
-      }
-      state.contacts.unshift({
-        id: nid(), name: name,
-        phone: ($("#nc-phone") && $("#nc-phone").value.trim()) || "—",
-        email: ($("#nc-email") && $("#nc-email").value.trim()) || "—",
-        vehicle: ($("#nc-vehicle") && $("#nc-vehicle").value.trim()) || "Not recorded",
-        ltv: 0, visits: 0, last: "just now", lastTs: 0, flag: "new"
+    "create-contact"(el) {
+      return withPending(el, async () => {
+        const name = $("#nc-name") ? $("#nc-name").value.trim() : "";
+        if (!name) {
+          const f = $("#nc-nameF"); if (f) f.classList.add("invalid");
+          toast("Name required", "", "err"); return;
+        }
+        const phone = ($("#nc-phone") && $("#nc-phone").value.trim()) || "";
+        const email = ($("#nc-email") && $("#nc-email").value.trim()) || "";
+        const vehicle = ($("#nc-vehicle") && $("#nc-vehicle").value.trim()) || "";
+        await api("POST", "/api/contacts", { name, phone, email, notes: vehicle || null });
+        await refreshContacts();
+        closeModal(); render();
+        toast("Contact added", name + " is now in your list.");
       });
-      closeModal(); render();
-      toast("Contact added", name + " is now in your list.");
     },
 
     // ---- settings ----
     threshold(el) {
       const key = el.dataset.key;
-      state.settings[key] = +el.value;
-      const unit = key === "overdueJob" ? " hrs" : " days";
       const lbl = $("#v-" + key);
-      if (lbl) lbl.textContent = el.value + unit;
+      if (lbl) lbl.textContent = el.value + " days";
     },
     "threshold-commit"(el) {
-      toast("Threshold saved", "Attention queue re-evaluated.", "info");
+      return withPending(el, async () => {
+        const key = el.dataset.key;
+        state.serverSettings[key] = +el.value;
+        await api("PATCH", "/api/settings", { [key]: +el.value });
+        await refreshQueueAndProgress();
+        toast("Threshold saved", "Attention queue re-evaluated.", "info");
+      });
     },
     toggle(el) {
-      const key = el.dataset.key;
-      state.settings[key] = !state.settings[key];
-      el.classList.toggle("on", state.settings[key]);
-      el.setAttribute("aria-checked", String(state.settings[key]));
-      toast(state.settings[key] ? "Turned on" : "Turned off", el.getAttribute("aria-label"), "info");
+      return withPending(el, async () => {
+        const key = el.dataset.key;
+        // Modules and branding-adjacent toggles are cosmetic/env-var-only.
+        if (key in state.settings) {
+          state.settings[key] = !state.settings[key];
+          el.classList.toggle("on", state.settings[key]);
+          el.setAttribute("aria-checked", String(state.settings[key]));
+          toast(state.settings[key] ? "Turned on" : "Turned off", el.getAttribute("aria-label"), "info");
+          return;
+        }
+        const next = !state.serverSettings[key];
+        state.serverSettings[key] = next;
+        el.classList.toggle("on", next);
+        el.setAttribute("aria-checked", String(next));
+        await api("PATCH", "/api/settings", { [key]: next });
+        toast(next ? "Turned on" : "Turned off", el.getAttribute("aria-label"), "info");
+      });
     },
     "set-accent"(el) {
       state.settings.accent = el.dataset.color;
       render();
-      toast("Accent updated", "Every screen re-themed instantly.", "info");
+      toast("Accent updated", "Preview only — set BRAND_PRIMARY to make it permanent.", "info");
     },
     vocab(el) { state.settings[el.dataset.key] = el.value; },
     "save-branding"() {
-      toast("Branding saved", '"' + state.settings.vocabJob + '" / "' + state.settings.vocabIntake + '" · ' + state.settings.currency);
+      toast("Preview only", "Branding is set via environment variables at deploy time.", "info");
     },
     "reset-demo"() {
-      openModal("Reset demo data?",
-        "<p style='margin-top:0;font-size:13px;'>This restores every invoice, message, and contact to the original seeded state. Anything you logged in this session is discarded.</p>",
+      openModal("Reload from the server?",
+        "<p style='margin-top:0;font-size:13px;'>This re-fetches everything from the server, discarding any unsaved local preview (accent colour, vocabulary).</p>",
         '<button class="btn btn-ghost" data-action="close-modal">Cancel</button>' +
-        '<button class="btn btn-danger" data-action="confirm-reset">Reset everything</button>');
+        '<button class="btn btn-danger" data-action="confirm-reset">Reload</button>');
     },
     "confirm-reset"() { closeModal(); location.reload(); },
     "wipe-tenant"() {
@@ -1561,13 +1714,13 @@
       const v = $("#wipe-confirm") ? $("#wipe-confirm").value.trim() : "";
       if (v !== state.tenant) { toast("Name doesn't match", "Type the business name exactly to confirm.", "err"); return; }
       closeModal();
-      toast("Deletion blocked", "This is a demo — nothing was deleted.", "info");
+      toast("Deletion blocked", "This is a demo control — nothing was deleted.", "info");
     },
 
-    // ---- tenant ----
+    // ---- tenant (cosmetic preview only) ----
     "switch-tenant"() {
       openModal("Switch deployment",
-        "<p style='margin-top:0;font-size:13px;color:var(--ink-secondary);'>Same engine, different client. Watch the vocabulary and accent change.</p>" +
+        "<p style='margin-top:0;font-size:13px;color:var(--ink-secondary);'>Same engine, different client. Watch the vocabulary and accent change. This is a visual preview only.</p>" +
         "<div style='display:grid;gap:8px;'>" + TENANTS.map(t =>
           "<button class='btn btn-ghost' style='justify-content:flex-start;gap:11px;' data-action='pick-tenant' data-key='" + t.key + "'>" +
           "<span style='width:11px;height:11px;border-radius:3px;background:" + t.accent + "'></span>" + esc(t.name) +
@@ -1586,27 +1739,16 @@
     },
 
     // --- implementation intentions: when-then commitment ---
-    // Meta-analysis of 642 tests: specifying WHEN and WHERE an action happens
-    // lifts follow-through markedly over intention alone (d = 0.27-0.66).
     "schedule-item"(el) {
-      const kind = el.dataset.kind, id = +el.dataset.id;
-      const inv = state.invoices.find(x => x.id === id);
-      const what = kind === "goto-inbox-missed"
-        ? "return the missed calls"
-        : (inv ? (kind === "remind-invoice" ? "chase invoice #" + inv.num : "follow up estimate #" + inv.num) + " with " + inv.who : "handle this");
-      const triggers = [
-        ["Tomorrow, first thing", "when I next open Switchboard"],
-        ["Monday morning", "when the week starts"],
-        ["After my next job closes", "when I finish the car I am on"],
-        ["End of today", "before I lock up"]
-      ];
-      openModal("When will you " + esc(what) + "?",
+      const kind = el.dataset.kind, id = +el.dataset.id, label = el.dataset.label || "this";
+      const options = state.triggerOptions.length ? state.triggerOptions : ["Later today", "Tomorrow morning", "Monday morning", "Next week"];
+      openModal("When will you handle “" + esc(label) + "”?",
         "<p style='margin-top:0;font-size:13px;color:var(--ink-secondary);'>Pick the moment, not just the task. Deciding the trigger in advance is what makes it actually happen.</p>" +
-        triggers.map((t, i) =>
-          '<button class="trigger-opt' + (i === 0 ? " sel" : "") + '" data-action="pick-trigger" data-when="' + esc(t[0]) + '">' +
-            '<span class="to-when">' + esc(t[0]) + '</span><span class="to-then">\u2014 ' + esc(t[1]) + "</span></button>").join("") +
-        '<input type="hidden" id="sch-when" value="' + esc(triggers[0][0]) + '">' +
-        '<input type="hidden" id="sch-what" value="' + esc(what) + '">' +
+        options.map((opt, i) =>
+          '<button class="trigger-opt' + (i === 0 ? " sel" : "") + '" data-action="pick-trigger" data-when="' + esc(opt) + '">' +
+            '<span class="to-when">' + esc(opt) + '</span><span class="to-then">— ' + esc(TRIGGER_THEN[opt] || "") + "</span></button>").join("") +
+        '<input type="hidden" id="sch-when" value="' + esc(options[0]) + '">' +
+        '<input type="hidden" id="sch-what" value="' + esc(label) + '">' +
         '<input type="hidden" id="sch-kind" value="' + esc(kind) + '">' +
         '<input type="hidden" id="sch-id" value="' + id + '">',
         '<button class="btn btn-ghost" data-action="close-modal">Cancel</button>' +
@@ -1617,32 +1759,46 @@
       el.classList.add("sel");
       const f = $("#sch-when"); if (f) f.value = el.dataset.when;
     },
-    "confirm-schedule"() {
-      const when = $("#sch-when") ? $("#sch-when").value : "Tomorrow";
-      const what = $("#sch-what") ? $("#sch-what").value : "this";
-      const kind = $("#sch-kind") ? $("#sch-kind").value : "";
-      const id = $("#sch-id") ? +$("#sch-id").value : 0;
-      state.scheduled.push({
-        id: nid(), trigger: when, label: "I will " + what,
-        detail: "Committed " + new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" }) + " \u00b7 " + kind.replace(/-/g, " "),
-        kind: kind, targetId: id
+    "confirm-schedule"(el) {
+      return withPending(el, async () => {
+        const when = $("#sch-when") ? $("#sch-when").value : "Later today";
+        const what = $("#sch-what") ? $("#sch-what").value : "this";
+        const kind = $("#sch-kind") ? $("#sch-kind").value : "";
+        const id = $("#sch-id") ? +$("#sch-id").value : 0;
+        await api("POST", "/api/followups", { trigger_label: when, target_kind: kind, target_id: id || null, label: "I will " + what });
+        await refreshScheduled();
+        closeModal(); render();
+        toast("Committed", when + " — " + what + ".");
       });
-      closeModal(); render();
-      toast("Committed", when + " \u2014 " + what + ".");
     },
     "do-scheduled"(el) {
-      const s = state.scheduled.find(x => x.id === +el.dataset.id);
-      if (!s) return;
-      state.scheduled = state.scheduled.filter(x => x.id !== s.id);
-      const fake = { dataset: { id: String(s.targetId) } };
-      if (actions[s.kind]) { actions[s.kind](fake); }
-      else { render(); toast("Done", s.label); }
+      return withPending(el, async () => {
+        const s = state.scheduled.find(x => x.id === +el.dataset.id);
+        if (!s) return;
+        await api("POST", "/api/followups/" + s.id + "/done");
+        await refreshScheduled();
+        const fake = { dataset: { id: String(s.target_id) } };
+        if (actions[s.target_kind]) { await actions[s.target_kind](fake); }
+        else { render(); toast("Done", s.label); }
+      });
     },
     "drop-scheduled"(el) {
-      const s = state.scheduled.find(x => x.id === +el.dataset.id);
-      state.scheduled = state.scheduled.filter(x => x.id !== +el.dataset.id);
-      render();
-      toast("Dropped", s ? s.label : "", "info");
+      return withPending(el, async () => {
+        const s = state.scheduled.find(x => x.id === +el.dataset.id);
+        await api("DELETE", "/api/followups/" + el.dataset.id);
+        await refreshScheduled();
+        render();
+        toast("Dropped", s ? s.label : "", "info");
+      });
+    },
+    "view-queue-item"(el) {
+      const it = state.queue[+el.dataset.idx];
+      if (!it) return;
+      openModal(esc(it.title),
+        "<p style='margin-top:0;font-size:13px;color:var(--ink-secondary);'>" + esc(it.detail) + "</p>" +
+        (it.contact ? "<p style='font-size:13px;'>" + esc(it.contact.name || it.contact.company || "") + (it.contact.phone ? " · " + esc(it.contact.phone) : "") + "</p>" : "") +
+        (it.value_cents ? "<p style='font-size:13px;font-weight:600;'>" + money(it.value_cents) + "</p>" : ""),
+        '<button class="btn btn-primary" data-action="close-modal">Close</button>');
     },
 
     // --- command palette ---
@@ -1652,7 +1808,7 @@
     "show-shortcuts"() {
       openModal("Keyboard shortcuts",
         "<div style='display:grid;gap:9px;font-size:13px;'>" +
-        [["\u2318 K / Ctrl K", "Command palette \u2014 jump anywhere, run anything"],
+        [["⌘ K / Ctrl K", "Command palette — jump anywhere, run anything"],
          ["G then O / I / P / C / S", "Go to Overview, Inbox, Payments, Contacts, Settings"],
          ["N", "Log activity"],
          ["/", "Focus search"],
@@ -1665,7 +1821,8 @@
     },
 
     "close-modal"() { closeModal(); },
-    "close-modal-bg"(el, e) { if (e.target === el) closeModal(); }
+    "close-modal-bg"(el, e) { if (e.target === el) closeModal(); },
+    "retry-load"() { loadAll(); },
   };
 
   // ============ events ============
@@ -1695,7 +1852,6 @@
   document.addEventListener("keydown", function (e) {
     const k = e.key;
 
-    // palette open: its own key handling
     if (state.cmdk.open) {
       if (k === "Escape") { e.preventDefault(); closeCmdk(); return; }
       const list = filterCommands(state.cmdk.q);
@@ -1705,12 +1861,10 @@
       return;
     }
 
-    // Cmd/Ctrl+K works from anywhere, typing included
     if ((e.metaKey || e.ctrlKey) && (k === "k" || k === "K")) { e.preventDefault(); openCmdk(); return; }
 
     if (k === "Escape") { closeModal(); hideSearch(); goPending = false; return; }
 
-    // don't hijack keys while the user is typing
     const t = e.target;
     const typing = t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable);
     if (typing || e.metaKey || e.ctrlKey || e.altKey) return;
@@ -1740,10 +1894,7 @@
     }
   });
 
-  // --- command palette ---------------------------------------------------
-  // Adoption research on field-service tools is blunt: "extra taps to close a
-  // job, repeated data entry" is the top reason owners quietly revert to
-  // spreadsheets. Every action here is two keystrokes from anywhere.
+  // --- command palette ---
   function buildCommands() {
     const c = [];
     PAGES.forEach(p => c.push({ sec: "Go to", ico: p.ico, label: p.label, hint: "G " + p.key[0].toUpperCase(), run: () => { state.page = p.key; render(); } }));
@@ -1756,11 +1907,11 @@
     c.push({ sec: "Actions", ico: "&#8646;", label: "Switch deployment", hint: "", run: () => actions["switch-tenant"]() });
     c.push({ sec: "Actions", ico: "&#9000;", label: "Keyboard shortcuts", hint: "?", run: () => actions["show-shortcuts"]() });
     state.contacts.slice(0, 40).forEach(ct => c.push({
-      sec: "Contacts", ico: "&#128100;", label: ct.name, hint: ct.vehicle,
+      sec: "Contacts", ico: "&#128100;", label: ct.name, hint: ct.notes || "",
       run: () => { state.page = "contacts"; render(); actions["view-contact"]({ dataset: { id: String(ct.id) } }); }
     }));
-    state.invoices.forEach(iv => c.push({
-      sec: "Invoices", ico: "&#129534;", label: "#" + iv.num + " \u2014 " + iv.who, hint: money(iv.amount) + " \u00b7 " + iv.status,
+    invoiceViews().forEach(iv => c.push({
+      sec: "Invoices", ico: "&#129534;", label: iv.num + " — " + iv.who, hint: money(iv.amount_cents) + " · " + iv.status,
       run: () => { state.page = "payments"; state.invoiceFilter = "all"; render(); }
     }));
     return c;
@@ -1794,9 +1945,9 @@
     });
     $("#cmdkRoot").innerHTML =
       '<div class="cmdk-overlay" data-action="cmdk-bg"><div class="cmdk" role="dialog" aria-modal="true" aria-label="Command palette">' +
-        '<input class="cmdk-input" id="cmdkInput" placeholder="Type a command, contact, or invoice\u2026" autocomplete="off" value="' + esc(state.cmdk.q) + '">' +
+        '<input class="cmdk-input" id="cmdkInput" placeholder="Type a command, contact, or invoice…" autocomplete="off" value="' + esc(state.cmdk.q) + '">' +
         '<div class="cmdk-list">' + (list.length ? out : '<div class="cmdk-empty">Nothing matches that.</div>') + "</div>" +
-        '<div class="cmdk-foot"><span><span class="kbd">\u2191\u2193</span> navigate</span><span><span class="kbd">\u21B5</span> run</span><span><span class="kbd">esc</span> close</span></div>' +
+        '<div class="cmdk-foot"><span><span class="kbd">↑↓</span> navigate</span><span><span class="kbd">↵</span> run</span><span><span class="kbd">esc</span> close</span></div>' +
       "</div></div>";
     const inp = $("#cmdkInput");
     if (inp) { inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length); }
@@ -1813,35 +1964,32 @@
     if (r) r.classList.add("hidden");
   }
 
+  let searchTimer = null;
   function doSearch(q) {
     const box = $("#searchResults");
-    q = q.trim().toLowerCase();
+    q = q.trim();
     if (!q) { box.classList.add("hidden"); box.innerHTML = ""; return; }
-    const hits = [];
-    state.contacts.forEach(c => {
-      if (c.name.toLowerCase().includes(q) || c.phone.includes(q) || c.vehicle.toLowerCase().includes(q))
-        hits.push({ label: c.name, kind: "Contact · " + c.vehicle, action: "view-contact", id: c.id });
-    });
-    state.invoices.forEach(i => {
-      if (i.num.includes(q) || i.who.toLowerCase().includes(q) || i.desc.toLowerCase().includes(q))
-        hits.push({ label: "#" + i.num + " — " + i.who, kind: "Invoice · " + money(i.amount), action: "goto-payments", id: i.id });
-    });
-    state.messages.forEach(m => {
-      if (m.who.toLowerCase().includes(q) || m.snippet.toLowerCase().includes(q))
-        hits.push({ label: m.who, kind: CHAN_LBL[m.chan] + " · " + m.when, action: "goto-inbox", id: m.id });
-    });
-    box.classList.remove("hidden");
-    box.innerHTML = hits.length
-      ? hits.slice(0, 8).map(h => '<div class="sr" data-action="' + h.action + '" data-id="' + h.id + '"><span>' + esc(h.label) + '</span><span class="kind">' + esc(h.kind) + "</span></div>").join("")
-      : '<div class="empty">No matches for “' + esc(q) + '”</div>';
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(async () => {
+      let res;
+      try { res = await api("GET", "/api/search?q=" + encodeURIComponent(q)); }
+      catch (e) { return; }
+      const hits = [];
+      (res.contacts || []).forEach(c => hits.push({ label: c.name, kind: "Contact · " + (c.phone || ""), action: "view-contact", id: c.id }));
+      (res.invoices || []).forEach(i => hits.push({ label: i.number + " — " + ((i.contact && i.contact.name) || "Walk-in"), kind: "Invoice · " + money(i.totals ? i.totals.total : 0), action: "goto-payments", id: i.id }));
+      (res.messages || []).forEach(m => hits.push({ label: msgWho(m), kind: (CHAN_LBL[m.channel] || m.channel) + " · " + timeAgo(m.occurred_at), action: "goto-inbox", id: m.id }));
+      box.classList.remove("hidden");
+      box.innerHTML = hits.length
+        ? hits.slice(0, 8).map(h => '<div class="sr" data-action="' + h.action + '" data-id="' + h.id + '"><span>' + esc(h.label) + '</span><span class="kind">' + esc(h.kind) + "</span></div>").join("")
+        : '<div class="empty">No matches for “' + esc(q) + '”</div>';
+    }, 180);
   }
 
   document.addEventListener("click", function (e) {
     if (!e.target.closest(".search-wrap")) hideSearch();
   });
 
-  state.dayStartLoad = attentionItems().length;
-  render();
+  loadAll();
   window.__sb = {
     state: state, actions: actions,
     clearProgress: clearProgress, landmark: landmark,

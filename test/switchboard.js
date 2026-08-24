@@ -77,19 +77,23 @@ async function check(name, fn) {
     return `messages ${before.m}→${after.m}, contacts ${before.c}→${after.c}`;
   });
 
-  // ---------- 4. attention queue shrinks when acted on ----------
+  // ---------- 4. attention queue responds when acted on ----------
+  // Reminding an overdue invoice does not remove it from the queue anymore —
+  // it is still genuinely overdue against a real due date — but the
+  // goal-gradient "cleared today" counter should register the action.
   await check('attention queue responds to action', async () => {
-    const before = await page.locator('.attention-item').count();
-    if (!before) throw new Error('no attention items seeded');
+    const before = await page.evaluate(() => window.__sb.clearProgress().done);
+    const items = await page.locator('.attention-item').count();
+    if (!items) throw new Error('no attention items seeded');
     await page.click('.attention-item [data-action="remind-invoice"]');
     await page.waitForTimeout(200);
     const modalOpen = await page.locator('.modal').count();
     if (!modalOpen) throw new Error('remind modal did not open');
     await page.click('[data-action="confirm-remind"]');
-    await page.waitForTimeout(250);
-    const after = await page.locator('.attention-item').count();
-    if (after >= before) throw new Error(`queue did not shrink (${before}→${after})`);
-    return `items ${before}→${after}`;
+    await page.waitForTimeout(400);
+    const after = await page.evaluate(() => window.__sb.clearProgress().done);
+    if (after <= before) throw new Error(`cleared-today did not increase (${before}→${after})`);
+    return `cleared-today ${before}→${after}`;
   });
 
   // ---------- 5. inbox filters ----------
@@ -181,14 +185,14 @@ async function check(name, fn) {
   await check('mark paid updates AR + contact LTV', async () => {
     await page.click('[data-action="invoice-filter"][data-filter="all"]');
     await page.waitForTimeout(150);
-    const arBefore = await page.evaluate(() => window.__sb.state.invoices.filter(i=>i.status==='overdue'||i.status==='sent').reduce((s,i)=>s+i.amount,0));
+    const arBefore = await page.evaluate(() => window.__sb.state.summary.outstanding_cents);
     await page.click('[data-action="mark-paid"]');
     await page.waitForTimeout(200);
     await page.click('[data-action="confirm-paid"]');
-    await page.waitForTimeout(250);
-    const arAfter = await page.evaluate(() => window.__sb.state.invoices.filter(i=>i.status==='overdue'||i.status==='sent').reduce((s,i)=>s+i.amount,0));
+    await page.waitForTimeout(400);
+    const arAfter = await page.evaluate(() => window.__sb.state.summary.outstanding_cents);
     if (arAfter >= arBefore) throw new Error(`AR did not drop (${arBefore}→${arAfter})`);
-    return `AR $${arBefore}→$${arAfter}`;
+    return `AR ${arBefore}c→${arAfter}c`;
   });
 
   await check('aging buckets recompute', async () => {
@@ -264,16 +268,19 @@ async function check(name, fn) {
   await page.click('[data-action="nav"][data-page="settings"]');
   await page.waitForTimeout(150);
 
+  // Real (server-saved) settings live in state.serverSettings; branding/module
+  // toggles are a cosmetic-only preview in state.settings. Read whichever the
+  // key actually lives in.
   await check('all toggles flip state', async () => {
     const toggles = await page.locator('.toggle').count();
     const changed = [];
     for (let i = 0; i < toggles; i++) {
       const t = page.locator('.toggle').nth(i);
       const key = await t.getAttribute('data-key');
-      const before = await page.evaluate(k => window.__sb.state.settings[k], key);
+      const before = await page.evaluate(k => (k in window.__sb.state.settings ? window.__sb.state.settings[k] : window.__sb.state.serverSettings[k]), key);
       await t.click();
-      await page.waitForTimeout(60);
-      const after = await page.evaluate(k => window.__sb.state.settings[k], key);
+      await page.waitForTimeout(300);
+      const after = await page.evaluate(k => (k in window.__sb.state.settings ? window.__sb.state.settings[k] : window.__sb.state.serverSettings[k]), key);
       if (before === after) throw new Error(key + ' did not change');
       changed.push(key);
     }
@@ -284,9 +291,9 @@ async function check(name, fn) {
     const keys = await page.$$eval('[data-action="threshold"]', els => els.map(e => e.dataset.key));
     for (const k of keys) {
       const el = page.locator(`[data-action="threshold"][data-key="${k}"]`);
-      await el.fill('60').catch(async () => { await el.evaluate(e => { e.value = e.max; e.dispatchEvent(new Event('input', {bubbles:true})); }); });
-      await page.waitForTimeout(80);
-      const v = await page.evaluate(kk => window.__sb.state.settings[kk], k);
+      await el.evaluate(e => { e.value = e.max; e.dispatchEvent(new Event('input', { bubbles: true })); e.dispatchEvent(new Event('change', { bubbles: true })); });
+      await page.waitForTimeout(300);
+      const v = await page.evaluate(kk => window.__sb.state.serverSettings[kk], k);
       const lbl = await page.textContent('#v-' + k);
       if (String(v) !== lbl.replace(/[^0-9]/g, '')) throw new Error(k + ' label/state mismatch: ' + v + ' vs ' + lbl);
     }
@@ -341,10 +348,10 @@ async function check(name, fn) {
 
   // ---------- 10. search ----------
   await check('search returns matches', async () => {
-    await page.fill('#search', 'diaz');
-    await page.waitForTimeout(250);
+    await page.fill('#search', 'brennan');
+    await page.waitForTimeout(500);
     const hits = await page.locator('.search-results .sr').count();
-    if (hits === 0) throw new Error('no hits for "diaz"');
+    if (hits === 0) throw new Error('no hits for "brennan"');
     return hits + ' hits';
   });
 
@@ -358,8 +365,8 @@ async function check(name, fn) {
   });
 
   await check('search result navigates', async () => {
-    await page.fill('#search', 'whitfield');
-    await page.waitForTimeout(250);
+    await page.fill('#search', 'okafor');
+    await page.waitForTimeout(500);
     await page.click('.search-results .sr');
     await page.waitForTimeout(250);
     const modalOrPage = await page.locator('.modal, .page-head h1').count();
@@ -429,6 +436,22 @@ async function check(name, fn) {
   });
 
   await check('ring advances when an item is cleared', async () => {
+    // Earlier tests may have paid off the only seeded overdue invoice —
+    // persisted state, unlike the old in-memory demo, doesn't reset on
+    // reload. Guarantee a fresh one exists so this test is self-sufficient.
+    await page.evaluate(async () => {
+      const contacts = await (await fetch('/api/contacts')).json();
+      await fetch('/api/invoices', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contact_id: contacts[0].id, status: 'Sent',
+          issue_date: '2020-01-01', due_date: '2020-01-15',
+          items: [{ description: 'Ring-advance test fixture', qty: 1, unit_price: 100 }],
+        }),
+      });
+    });
+    await page.reload();
+    await page.waitForTimeout(400);
     const before = await page.evaluate(() => window.__sb.clearProgress());
     await page.click('.attention-item [data-action="remind-invoice"]');
     await page.waitForTimeout(200);
@@ -497,12 +520,15 @@ async function check(name, fn) {
   });
 
   // ---------- peak-end: cleared state ----------
+  // The queue is now server-fetched (state.queue / state.progress), not
+  // derived from state.invoices/messages — simulate "everything cleared" by
+  // setting those directly, the same fields render() actually reads.
   await check('cleared state renders when queue empties', async () => {
     await page.evaluate(() => {
       const s = window.__sb.state;
-      s.invoices.forEach(i => { if (i.status === 'overdue' || i.status === 'sent') { i.status = 'paid'; i.days = 0; } });
+      s.queue = [];
       s.messages.forEach(m => { m.status = 'done'; m.unread = false; });
-      s.clearedToday = 6; s.recovered = 1240;
+      s.progress = { done: 6, total: 6, remaining: 0, pct: 1 };
     });
     await page.click('[data-action="nav"][data-page="settings"]');
     await page.waitForTimeout(120);
