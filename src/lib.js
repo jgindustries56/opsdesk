@@ -149,6 +149,42 @@ async function getSettingsMap() {
 }
 
 /**
+ * Real first-response-time, computed the way support tooling actually does
+ * it (Fullview/Geckoboard convention): only conversations that got a reply
+ * count, and the median is reported rather than the mean since one very
+ * slow reply would otherwise dominate a small sample. Returns null when
+ * there's no reply data in the window — the frontend shows "No replies
+ * yet" rather than a fabricated number.
+ */
+async function medianResponseMinutes(sinceIso, beforeIso) {
+  const rows = await db.all(
+    `SELECT r.occurred_at AS reply_at, o.occurred_at AS orig_at
+     FROM messages r JOIN messages o ON r.in_reply_to = o.id
+     WHERE r.direction = 'out' AND r.occurred_at >= $1 AND r.occurred_at < $2`,
+    [sinceIso, beforeIso]
+  );
+  const minutes = rows
+    .map((r) => (new Date(r.reply_at).getTime() - new Date(r.orig_at).getTime()) / 60000)
+    .filter((m) => Number.isFinite(m) && m >= 0)
+    .sort((a, b) => a - b);
+  if (!minutes.length) return null;
+  const mid = Math.floor(minutes.length / 2);
+  return minutes.length % 2 ? minutes[mid] : (minutes[mid - 1] + minutes[mid]) / 2;
+}
+
+/** This 30-day window vs. the prior 30 days, for an honest trend arrow. */
+async function responseTimeSummary() {
+  const now = nowIso();
+  const start = new Date(Date.now() - 30 * DAY_MS).toISOString();
+  const prevStart = new Date(Date.now() - 60 * DAY_MS).toISOString();
+  const [current, previous] = await Promise.all([
+    medianResponseMinutes(start, now),
+    medianResponseMinutes(prevStart, start),
+  ]);
+  return { median_minutes: current, prior_median_minutes: previous };
+}
+
+/**
  * Records today as a "cleared" day the first time the queue hits zero, and
  * returns the current consecutive-day streak ending today (or yesterday, if
  * today hasn't been cleared yet — a streak isn't broken until the day is
@@ -406,6 +442,7 @@ module.exports = {
   seedSettingsDefaults,
   getSettingsMap,
   recordClearAndGetStreak,
+  responseTimeSummary,
   SETTINGS_DEFAULTS,
   DAY_MS,
 };

@@ -84,9 +84,9 @@ router.post('/:id/reply', async (req, res) => {
   if (!body) return res.status(400).json({ error: 'Reply body is required' });
 
   const outbound = await db.one(
-    `INSERT INTO messages (contact_id, channel, direction, status, unread, subject, body, occurred_at, created_at)
-     VALUES ($1,$2,'out','done',$3,$4,$5,$6,$6) RETURNING *`,
-    [original.contact_id, original.channel, false, original.subject, body, nowIso()]
+    `INSERT INTO messages (contact_id, channel, direction, status, unread, subject, body, in_reply_to, occurred_at, created_at)
+     VALUES ($1,$2,'out','done',$3,$4,$5,$6,$7,$7) RETURNING *`,
+    [original.contact_id, original.channel, false, original.subject, body, original.id, nowIso()]
   );
   await db.query('UPDATE messages SET status=$1, unread=$2 WHERE id=$3', [
     'done',

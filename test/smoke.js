@@ -304,6 +304,21 @@ async function main() {
     assert.ok(prog.open_commitments >= prog.overdue_commitments);
   });
 
+  await check('dashboard reports no response-time data before any reply exists', async () => {
+    const s = await req('GET', '/api/dashboard/summary');
+    assert.strictEqual(s.median_response_minutes, null, 'nothing has been replied to yet in this run');
+  });
+
+  await check('replying computes a real median response time', async () => {
+    const inbound = await req('POST', '/api/messages', {
+      name: 'Response Time Fixture', channel: 'text', note: 'how long until you reply',
+    });
+    await req('POST', `/api/messages/${inbound.id}/reply`, { body: 'Replying right away' });
+    const s = await req('GET', '/api/dashboard/summary');
+    assert.ok(Number.isFinite(s.median_response_minutes), 'should now have a real number, not null');
+    assert.ok(s.median_response_minutes < 5, 'this reply happened seconds ago');
+  });
+
   await check('quick capture creates a message and upserts the contact', async () => {
     message = await req('POST', '/api/messages', {
       name: 'Message Test Person', phone: '555-8100', channel: 'text', note: 'testing quick capture',

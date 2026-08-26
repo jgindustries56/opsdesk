@@ -130,6 +130,7 @@ const TABLES = [
      subject       ${D.text},
      body          ${D.text},
      external_id   ${D.text},
+     in_reply_to   ${D.fk} REFERENCES messages(id) ON DELETE SET NULL,
      occurred_at   ${D.ts} DEFAULT ${D.now},
      created_at    ${D.ts} DEFAULT ${D.now}
    )`,
@@ -168,6 +169,7 @@ const INDEXES = [
   `CREATE INDEX IF NOT EXISTS idx_activity_entity ON activity(entity_type, entity_id)`,
   `CREATE INDEX IF NOT EXISTS idx_messages_status ON messages(status, occurred_at)`,
   `CREATE INDEX IF NOT EXISTS idx_messages_contact ON messages(contact_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_messages_reply_to ON messages(in_reply_to)`,
   `CREATE INDEX IF NOT EXISTS idx_scheduled_due ON scheduled_followups(trigger_at, done_at)`,
 ];
 
