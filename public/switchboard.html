@@ -431,6 +431,11 @@
   .toast.info { border-left-color: var(--seq-500); }
   .toast .tt { font-weight: 600; }
   .toast .td { color: var(--ink-secondary); font-size: 12px; margin-top: 1px; }
+  .toast-undo {
+    background: none; border: none; color: var(--brand-deep); font-weight: 700;
+    font-size: 12px; cursor: pointer; padding: 2px 0; flex-shrink: 0; text-decoration: underline;
+  }
+  .toast-undo:hover { color: var(--brand); }
   @keyframes slidein { from { opacity: 0; transform: translateX(16px); } to { opacity: 1; transform: none; } }
   @media (prefers-reduced-motion: reduce) { .toast { animation: none; } }
 
@@ -578,7 +583,7 @@
 
 <div id="modalRoot"></div>
 <div id="cmdkRoot"></div>
-<div class="toast-wrap" id="toastRoot"></div>
+<div class="toast-wrap" id="toastRoot" aria-live="polite" aria-atomic="false"></div>
 
 <script>
 (function () {
@@ -632,13 +637,26 @@
   const CHAN_ICO = { call: "&#128222;", text: "&#128172;", email: "&#9993;", walkin: "&#128694;" };
   const CHAN_LBL = { call: "Call", text: "Text", email: "Email", walkin: "Walk-in" };
 
-  function toast(title, desc, kind) {
+  // A recovery window beats a confirm dialog: "Are you sure?" primes fear
+  // before the action even happens, where undo lets people act at full
+  // speed and only pay attention if they actually got it wrong.
+  function toast(title, desc, kind, undoFn) {
     const root = $("#toastRoot");
     const el = document.createElement("div");
     el.className = "toast" + (kind ? " " + kind : "");
-    el.innerHTML = '<div><div class="tt">' + esc(title) + "</div>" + (desc ? '<div class="td">' + esc(desc) + "</div>" : "") + "</div>";
+    el.setAttribute("role", "status");
+    el.innerHTML = '<div style="flex:1;min-width:0;"><div class="tt">' + esc(title) + "</div>" + (desc ? '<div class="td">' + esc(desc) + "</div>" : "") + "</div>" +
+      (undoFn ? '<button class="toast-undo" type="button">Undo</button>' : "");
     root.appendChild(el);
-    setTimeout(() => { el.remove(); }, 3400);
+    const life = undoFn ? 6000 : 3400;
+    const timer = setTimeout(() => { el.remove(); }, life);
+    if (undoFn) {
+      el.querySelector(".toast-undo").addEventListener("click", () => {
+        clearTimeout(timer);
+        el.remove();
+        undoFn();
+      });
+    }
   }
 
   /** Disables the triggering button, runs fn, always re-enables, toasts on failure. */
@@ -1363,15 +1381,42 @@
   }
 
   // ============ modal ============
+  // A modal that opens and leaves keyboard/screen-reader focus behind on the
+  // page underneath is disorienting — focus moves to the first field, Tab
+  // stays trapped inside while it's open, and closing hands focus back to
+  // wherever the modal was opened from rather than losing it to the body.
+  let modalReturnFocus = null;
   function openModal(title, bodyHTML, footHTML, wide) {
+    modalReturnFocus = document.activeElement;
     $("#modalRoot").innerHTML =
-      '<div class="overlay" data-action="close-modal-bg"><div class="modal' + (wide ? " wide" : "") + '" role="dialog" aria-modal="true">' +
-        '<div class="modal-head"><h3>' + title + '</h3><button class="modal-close" data-action="close-modal" aria-label="Close">&times;</button></div>' +
+      '<div class="overlay" data-action="close-modal-bg"><div class="modal' + (wide ? " wide" : "") + '" role="dialog" aria-modal="true" aria-labelledby="modalTitle" tabindex="-1">' +
+        '<div class="modal-head"><h3 id="modalTitle">' + title + '</h3><button class="modal-close" data-action="close-modal" aria-label="Close">&times;</button></div>' +
         '<div class="modal-body">' + bodyHTML + "</div>" +
         (footHTML ? '<div class="modal-foot">' + footHTML + "</div>" : "") +
       "</div></div>";
+    const modal = $("#modalRoot .modal");
+    const focusable = modal.querySelector("input, textarea, select, button:not(.modal-close)");
+    (focusable || modal).focus();
   }
-  function closeModal() { $("#modalRoot").innerHTML = ""; }
+  function closeModal() {
+    $("#modalRoot").innerHTML = "";
+    if (modalReturnFocus && document.contains(modalReturnFocus)) modalReturnFocus.focus();
+    modalReturnFocus = null;
+  }
+  function focusableInModal(modal) {
+    return Array.from(modal.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'))
+      .filter(el => !el.disabled && el.offsetParent !== null);
+  }
+  document.addEventListener("keydown", function (e) {
+    if (e.key !== "Tab") return;
+    const modal = $("#modalRoot .modal");
+    if (!modal) return;
+    const items = focusableInModal(modal);
+    if (!items.length) return;
+    const first = items[0], last = items[items.length - 1];
+    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+  });
 
   // ============ data loading ============
   async function refreshQueueAndProgress() {
@@ -1463,10 +1508,16 @@
     "mark-done"(el) {
       return withPending(el, async () => {
         const m = state.messages.find(x => x.id === +el.dataset.id);
+        const prevStatus = m ? m.status : "new";
+        const prevUnread = m ? Boolean(Number(m.unread)) : true;
         await api("PATCH", "/api/messages/" + el.dataset.id, { status: "done", unread: false });
         await refreshMessages();
         render();
-        toast("Marked done", m ? msgWho(m) + " — cleared from the queue." : "");
+        toast("Marked done", m ? msgWho(m) + " — cleared from the queue." : "", null, async () => {
+          await api("PATCH", "/api/messages/" + el.dataset.id, { status: prevStatus, unread: prevUnread });
+          await refreshMessages();
+          render();
+        });
       });
     },
     "call-back"(el) {
@@ -1887,12 +1938,23 @@
       });
     },
     "drop-scheduled"(el) {
-      return withPending(el, async () => {
-        const s = state.scheduled.find(x => x.id === +el.dataset.id);
-        await api("DELETE", "/api/followups/" + el.dataset.id);
-        await refreshScheduled();
+      // Deletion is deferred until the undo window actually passes, rather
+      // than fired immediately and undone by recreating a row — recreating
+      // would mint a new id and re-resolve "Later today" against a
+      // different clock, which isn't really the same commitment anymore.
+      const id = +el.dataset.id;
+      const s = state.scheduled.find(x => x.id === id);
+      if (!s) return;
+      state.scheduled = state.scheduled.filter(x => x.id !== id);
+      render();
+      const timer = setTimeout(() => {
+        api("DELETE", "/api/followups/" + id).catch(() => {});
+      }, 6000);
+      toast("Dropped", s.label, "info", () => {
+        clearTimeout(timer);
+        state.scheduled.push(s);
+        state.scheduled.sort((a, b) => a.trigger_at < b.trigger_at ? -1 : 1);
         render();
-        toast("Dropped", s ? s.label : "", "info");
       });
     },
     "view-queue-item"(el) {
