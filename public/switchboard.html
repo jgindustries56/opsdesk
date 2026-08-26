@@ -7,7 +7,13 @@
     --surface-raised: #ffffff;
     --ink: #0b0b0b;
     --ink-secondary: #52514e;
-    --ink-muted: #898781;
+    /* #898781 measured 3.4:1 against --surface/--page — under WCAG AA's
+       4.5:1 minimum for normal text (widely used for timestamps, KPI
+       sub-labels, empty states). Darkened just enough to clear 4.5:1 on
+       both backgrounds while staying visibly lower-emphasis than
+       --ink-secondary (7.7:1). Dark mode's --ink-muted already passes
+       (4.8-5.4:1) and is untouched. */
+    --ink-muted: #74726c;
     --gridline: #e1e0d9;
     --border: rgba(11,11,11,0.10);
     --brand: #0f7d72;
