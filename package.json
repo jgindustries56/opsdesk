@@ -12,10 +12,14 @@
     "start": "node server.js",
     "dev": "node --watch server.js",
     "seed": "node seed.js",
-    "test": "node test/smoke.js"
+    "test": "node test/smoke.js",
+    "test:switchboard": "node test/switchboard.js"
   },
   "dependencies": {
     "express": "^4.21.2",
     "pg": "^8.13.1"
+  },
+  "devDependencies": {
+    "playwright": "^1.56.1"
   }
 }

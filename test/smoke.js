@@ -257,6 +257,257 @@ async function main() {
     assert.strictEqual(res.status, 404);
   });
 
+  // ---- Switchboard merge: Phase 2 endpoints ----
+
+  let message, followup;
+
+  await check('queue exposes the seven follow-up rules', async () => {
+    const queue = await req('GET', '/api/queue');
+    assert.ok(Array.isArray(queue));
+    const followups = await req('GET', '/api/dashboard/followups');
+    assert.strictEqual(queue.length, followups.length, '/api/queue should mirror buildFollowUps()');
+  });
+
+  await check('queue progress reports done/total/remaining/pct', async () => {
+    const prog = await req('GET', '/api/queue/progress');
+    assert.ok(Number.isFinite(prog.done));
+    assert.ok(Number.isFinite(prog.total));
+    assert.ok(Number.isFinite(prog.remaining));
+    assert.ok(prog.pct >= 0 && prog.pct <= 1);
+    assert.ok(Number.isFinite(prog.streak));
+    assert.ok(Number.isFinite(prog.open_commitments));
+    assert.ok(Number.isFinite(prog.overdue_commitments));
+  });
+
+  await check('clean-queue streak is recorded once remaining hits zero', async () => {
+    const dbm = require('../src/db');
+    // Not a realistic zero-queue state (there's plenty seeded above) — call
+    // the recorder directly with remaining=0 the way the route does, and
+    // confirm it writes today's date and counts as a 1-day streak.
+    const { recordClearAndGetStreak, todayIso } = require('../src/lib');
+    const streak = await recordClearAndGetStreak(0);
+    assert.ok(streak >= 1);
+    const row = await dbm.one('SELECT date FROM daily_clear_log WHERE date = $1', [todayIso()]);
+    assert.ok(row, 'today should be logged as cleared');
+  });
+
+  await check('overdue commitments are distinguished from upcoming ones', async () => {
+    const past = new Date(Date.now() - 3600000).toISOString();
+    const dbm = require('../src/db');
+    await dbm.query(
+      `INSERT INTO scheduled_followups (trigger_label, trigger_at, target_kind, target_id, label, created_at)
+       VALUES ($1,$2,$3,$4,$5,$6)`,
+      ['Later today', past, 'call-back', contact.id, 'Overdue fixture', past]
+    );
+    const prog = await req('GET', '/api/queue/progress');
+    assert.ok(prog.overdue_commitments >= 1);
+    assert.ok(prog.open_commitments >= prog.overdue_commitments);
+  });
+
+  await check('dashboard reports no response-time data before any reply exists', async () => {
+    const s = await req('GET', '/api/dashboard/summary');
+    assert.strictEqual(s.median_response_minutes, null, 'nothing has been replied to yet in this run');
+  });
+
+  await check('replying computes a real median response time', async () => {
+    const inbound = await req('POST', '/api/messages', {
+      name: 'Response Time Fixture', channel: 'text', note: 'how long until you reply',
+    });
+    await req('POST', `/api/messages/${inbound.id}/reply`, { body: 'Replying right away' });
+    const s = await req('GET', '/api/dashboard/summary');
+    assert.ok(Number.isFinite(s.median_response_minutes), 'should now have a real number, not null');
+    assert.ok(s.median_response_minutes < 5, 'this reply happened seconds ago');
+  });
+
+  await check('quick capture creates a message and upserts the contact', async () => {
+    message = await req('POST', '/api/messages', {
+      name: 'Message Test Person', phone: '555-8100', channel: 'text', note: 'testing quick capture',
+    });
+    assert.ok(message.id);
+    assert.strictEqual(message.status, 'new');
+    assert.strictEqual(Boolean(message.unread), true);
+    assert.ok(message.contact.id);
+
+    const again = await req('POST', '/api/messages', {
+      name: 'Message Test Person', phone: '555-8100', channel: 'call', note: 'second touch',
+    });
+    assert.strictEqual(again.contact.id, message.contact.id, 'same phone should reuse the contact');
+  });
+
+  await check('messages list filters by channel, status and unread', async () => {
+    const byChannel = await req('GET', '/api/messages?channel=text');
+    assert.ok(byChannel.every((m) => m.channel === 'text'));
+    const unread = await req('GET', '/api/messages?unread=1');
+    assert.ok(unread.every((m) => Boolean(m.unread)));
+  });
+
+  await check('PATCH marks a message read/done', async () => {
+    const updated = await req('PATCH', `/api/messages/${message.id}`, { status: 'done', unread: false });
+    assert.strictEqual(updated.status, 'done');
+    assert.strictEqual(Boolean(updated.unread), false);
+  });
+
+  await check('reply persists an outbound message and closes the thread', async () => {
+    const outbound = await req('POST', `/api/messages/${message.id}/reply`, { body: 'Thanks, all set.' });
+    assert.strictEqual(outbound.direction, 'out');
+    assert.strictEqual(outbound.body, 'Thanks, all set.');
+    const original = (await req('GET', '/api/messages')).find((m) => m.id === message.id);
+    assert.strictEqual(original.status, 'done');
+  });
+
+  await check('mark-all-read clears unread messages', async () => {
+    await req('POST', '/api/messages', { name: 'Another Unread', channel: 'call', note: 'x' });
+    const res = await req('POST', '/api/messages/mark-all-read');
+    assert.strictEqual(res.ok, true);
+    const stillUnread = await req('GET', '/api/messages?unread=1');
+    assert.strictEqual(stillUnread.length, 0);
+  });
+
+  await check('contact detail joins messages and lifetime paid', async () => {
+    const detail = await req('GET', `/api/contacts/${message.contact.id}`);
+    assert.ok(Array.isArray(detail.messages) && detail.messages.length >= 1);
+    assert.ok(Number.isFinite(detail.lifetime_paid_cents));
+  });
+
+  await check('settings GET returns seeded thresholds, PATCH persists', async () => {
+    const before = await req('GET', '/api/settings');
+    assert.strictEqual(before.intakeStaleDays, 3);
+    const after = await req('PATCH', '/api/settings', { intakeStaleDays: 9 });
+    assert.strictEqual(after.intakeStaleDays, 9);
+    const reread = await req('GET', '/api/settings');
+    assert.strictEqual(reread.intakeStaleDays, 9);
+  });
+
+  await check('settings thresholds feed live into the follow-up queue', async () => {
+    await req('PATCH', '/api/settings', { intakeStaleDays: 1 });
+    const tight = await req('GET', '/api/dashboard/followups');
+    await req('PATCH', '/api/settings', { intakeStaleDays: 3650 });
+    const loose = await req('GET', '/api/dashboard/followups');
+    assert.ok(
+      tight.filter((f) => f.type === 'intake_stale').length >= loose.filter((f) => f.type === 'intake_stale').length,
+      'a huge threshold should surface at least as few stale intakes as a tiny one'
+    );
+    await req('PATCH', '/api/settings', { intakeStaleDays: 3 });
+  });
+
+  await check('followups: schedule, list, mark done, delete', async () => {
+    followup = await req('POST', '/api/followups', {
+      trigger_label: 'Tomorrow morning', target_kind: 'call-back', target_id: contact.id, label: 'Call test contact',
+    });
+    assert.ok(followup.id);
+    assert.ok(followup.trigger_at > followup.created_at, 'trigger_at should be resolved into the future');
+
+    const list = await req('GET', '/api/followups');
+    assert.ok(list.some((f) => f.id === followup.id));
+
+    const done = await req('POST', `/api/followups/${followup.id}/done`);
+    assert.ok(done.done_at);
+    const afterDone = await req('GET', '/api/followups');
+    assert.ok(!afterDone.some((f) => f.id === followup.id), 'done items should drop off the active list');
+
+    const dropped = await req('POST', '/api/followups', {
+      trigger_label: 'Next week', target_kind: 'call-back', target_id: contact.id, label: 'Drop me',
+    });
+    await req('DELETE', `/api/followups/${dropped.id}`);
+    const afterDelete = await req('GET', '/api/followups');
+    assert.ok(!afterDelete.some((f) => f.id === dropped.id));
+  });
+
+  await check('search returns contacts, invoices and messages together', async () => {
+    const res = await req('GET', '/api/search?q=Testing');
+    assert.ok(res.contacts.some((c) => c.id === contact.id));
+    assert.ok(Array.isArray(res.invoices));
+    assert.ok(Array.isArray(res.messages));
+  });
+
+  await check('invoice aging buckets sum to four ranges', async () => {
+    const buckets = await req('GET', '/api/invoices/aging');
+    assert.strictEqual(buckets.length, 4);
+    assert.deepStrictEqual(buckets.map((b) => b.label), ['Current', '31-60', '61-90', '90+']);
+  });
+
+  await check('invoice CSV export has a header and rows', async () => {
+    // The only invoice created earlier in this run was just voided, and
+    // export.csv correctly excludes voided invoices — create a fresh one so
+    // this check doesn't depend on what state earlier tests left behind.
+    await req('POST', '/api/invoices', {
+      contact_id: contact.id, items: [{ description: 'CSV export fixture', qty: 1, unit_price: 10 }],
+    });
+    const res = await fetch(`${BASE}/api/invoices/export.csv`);
+    const text = await res.text();
+    assert.ok(text.startsWith('Invoice,Customer,Status,Issued,Due,Total,Paid,Balance'));
+    assert.ok(text.trim().split('\n').length > 1);
+  });
+
+  await check('bulk remind-overdue sends to every overdue invoice', async () => {
+    const bulkInv = await req('POST', '/api/invoices', {
+      contact_id: contact.id, status: 'Sent', issue_date: '2020-01-01', due_date: '2020-01-15',
+      items: [{ description: 'Bulk remind fixture', qty: 1, unit_price: 50 }],
+    });
+    const res = await req('POST', '/api/invoices/remind-overdue');
+    assert.ok(res.reminded >= 1);
+    const detail = await req('GET', `/api/invoices/${bulkInv.id}`);
+    assert.ok(detail.activity.some((a) => a.body && a.body.includes('Bulk reminder')));
+  });
+
+  await check('send accepts a tone and logs it', async () => {
+    const draftInv = await req('POST', '/api/invoices', {
+      contact_id: contact.id, items: [{ description: 'Tone fixture', qty: 1, unit_price: 20 }],
+    });
+    const sent = await req('POST', `/api/invoices/${draftInv.id}/send`, { tone: 'firm' });
+    assert.strictEqual(sent.status, 'Sent');
+    const detail = await req('GET', `/api/invoices/${draftInv.id}`);
+    assert.ok(detail.activity.some((a) => a.body && a.body.includes('firm')));
+  });
+
+  // ---- auth gating ----
+  // config.appPassword is '' for this whole run (APP_PASSWORD unset), which
+  // is what makes auth.required a no-op — flip it just for this check to
+  // exercise the real gate, then restore it so later runs are unaffected.
+  await check('every /api/* route 401s without a session when a password is set', async () => {
+    const config = require('../src/config');
+    const original = config.appPassword;
+    config.appPassword = 'temp-test-password';
+    try {
+      const noCookie = await fetch(`${BASE}/api/config`);
+      assert.strictEqual(noCookie.status, 401);
+      const noCookie2 = await fetch(`${BASE}/api/contacts`);
+      assert.strictEqual(noCookie2.status, 401);
+
+      const wrongLogin = await fetch(`${BASE}/login`, {
+        method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: 'password=nope', redirect: 'manual',
+      });
+      assert.strictEqual(wrongLogin.status, 302);
+      assert.ok(wrongLogin.headers.get('location').includes('error'));
+
+      const rightLogin = await fetch(`${BASE}/login`, {
+        method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: 'password=temp-test-password', redirect: 'manual',
+      });
+      assert.strictEqual(rightLogin.status, 302);
+      const cookie = (rightLogin.headers.get('set-cookie') || '').split(';')[0];
+      assert.ok(cookie.startsWith('opsdesk_session='));
+
+      const withCookie = await fetch(`${BASE}/api/config`, { headers: { Cookie: cookie } });
+      assert.strictEqual(withCookie.status, 200);
+    } finally {
+      config.appPassword = original;
+    }
+  });
+
+  await check('healthz stays public even with a password set', async () => {
+    const config = require('../src/config');
+    const original = config.appPassword;
+    config.appPassword = 'temp-test-password';
+    try {
+      const res = await fetch(`${BASE}/healthz`);
+      assert.strictEqual(res.status, 200);
+    } finally {
+      config.appPassword = original;
+    }
+  });
+
   console.log(`\n${passed} passed, ${failed} failed\n`);
   process.exit(failed === 0 ? 0 : 1);
 }

@@ -3,7 +3,7 @@
 const express = require('express');
 const db = require('../db');
 const config = require('../config');
-const { buildFollowUps, loadInvoice, daysSince, todayIso } = require('../lib');
+const { buildFollowUps, loadInvoice, daysSince, todayIso, responseTimeSummary } = require('../lib');
 
 const router = express.Router();
 
@@ -63,6 +63,11 @@ router.get('/summary', async (req, res) => {
 
   const followUps = await buildFollowUps();
 
+  const messages = await db.all('SELECT status, unread FROM messages');
+  const missedCount = messages.filter((m) => m.status === 'missed').length;
+  const unreadCount = messages.filter((m) => Number(m.unread)).length;
+  const responseTime = await responseTimeSummary();
+
   res.json({
     currency: config.currency,
     outstanding_cents: outstanding,
@@ -77,6 +82,9 @@ router.get('/summary', async (req, res) => {
     active_jobs: activeJobs,
     followup_count: followUps.length,
     followup_high: followUps.filter((f) => f.severity === 'high').length,
+    unreturned_count: missedCount + unreadCount,
+    median_response_minutes: responseTime.median_minutes,
+    prior_median_response_minutes: responseTime.prior_median_minutes,
   });
 });
 

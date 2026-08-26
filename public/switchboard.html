@@ -1,0 +1,2299 @@
+<title>Switchboard</title>
+<style>
+  :root {
+    color-scheme: light;
+    --page: #f9f9f7;
+    --surface: #fcfcfb;
+    --surface-raised: #ffffff;
+    --ink: #0b0b0b;
+    --ink-secondary: #52514e;
+    /* #898781 measured 3.4:1 against --surface/--page — under WCAG AA's
+       4.5:1 minimum for normal text (widely used for timestamps, KPI
+       sub-labels, empty states). Darkened just enough to clear 4.5:1 on
+       both backgrounds while staying visibly lower-emphasis than
+       --ink-secondary (7.7:1). Dark mode's --ink-muted already passes
+       (4.8-5.4:1) and is untouched. */
+    --ink-muted: #74726c;
+    --gridline: #e1e0d9;
+    --border: rgba(11,11,11,0.10);
+    --brand: #0f7d72;
+    --brand-deep: #0b5f57;
+    --brand-wash: #e7f3f1;
+    --seq-250: #86b6ef;
+    --seq-350: #5598e7;
+    --seq-450: #2a78d6;
+    --seq-550: #1c5cab;
+    --seq-500: #256abf;
+    --seq-300: #6da7ec;
+    --good: #0ca30c;
+    --good-text: #006300;
+    --good-wash: rgba(12,163,12,0.12);
+    --warning: #fab219;
+    --warning-bg: #fef3da;
+    --warning-text: #8a5b00;
+    --serious: #ec835a;
+    --critical: #d03b3b;
+    --critical-bg: #fbe4e2;
+    --critical-text: #a02323;
+    --shadow: 0 12px 32px -12px rgba(11,11,11,0.24);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --page: #0d0d0d;
+      --surface: #1a1a19;
+      --surface-raised: #212120;
+      --ink: #ffffff;
+      --ink-secondary: #c3c2b7;
+      --ink-muted: #898781;
+      --gridline: #2c2c2a;
+      --border: rgba(255,255,255,0.10);
+      --brand: #29a396;
+      --brand-deep: #3ec2b3;
+      --brand-wash: #123531;
+      --seq-250: #184f95;
+      --seq-350: #256abf;
+      --seq-450: #3987e5;
+      --seq-550: #5598e7;
+      --seq-500: #3987e5;
+      --seq-300: #5598e7;
+      --good: #0ca30c;
+      --good-text: #0ca30c;
+      --good-wash: rgba(12,163,12,0.18);
+      --warning: #fab219;
+      --warning-bg: #3a2e0d;
+      --warning-text: #f5c463;
+      --serious: #ec835a;
+      --critical: #e66767;
+      --critical-bg: #3a1616;
+      --critical-text: #f29b9b;
+      --shadow: 0 12px 32px -12px rgba(0,0,0,0.6);
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --page: #0d0d0d;
+    --surface: #1a1a19;
+    --surface-raised: #212120;
+    --ink: #ffffff;
+    --ink-secondary: #c3c2b7;
+    --ink-muted: #898781;
+    --gridline: #2c2c2a;
+    --border: rgba(255,255,255,0.10);
+    --brand: #29a396;
+    --brand-deep: #3ec2b3;
+    --brand-wash: #123531;
+    --seq-250: #184f95;
+    --seq-350: #256abf;
+    --seq-450: #3987e5;
+    --seq-550: #5598e7;
+    --seq-500: #3987e5;
+    --seq-300: #5598e7;
+    --good: #0ca30c;
+    --good-text: #0ca30c;
+    --good-wash: rgba(12,163,12,0.18);
+    --warning: #fab219;
+    --warning-bg: #3a2e0d;
+    --warning-text: #f5c463;
+    --serious: #ec835a;
+    --critical: #e66767;
+    --critical-bg: #3a1616;
+    --critical-text: #f29b9b;
+    --shadow: 0 12px 32px -12px rgba(0,0,0,0.6);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--page);
+    color: var(--ink);
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+  }
+  a { color: inherit; }
+  button { font: inherit; color: inherit; }
+  .tab { font-variant-numeric: tabular-nums; }
+  :focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; border-radius: 4px; }
+
+  .app { display: grid; grid-template-columns: 236px 1fr; min-height: 100vh; }
+  /* Grid/flex items default to min-width:auto — they refuse to shrink below
+     their content's intrinsic width even when the container asks them to,
+     which is exactly what was pushing the page into horizontal scroll on
+     any phone-width screen. min-width:0 opts back into normal shrinking. */
+  .app > .main-col { min-width: 0; }
+  @media (max-width: 820px) { .app { grid-template-columns: 1fr; } aside { display: none !important; } }
+
+  /* ---------- sidebar ---------- */
+  aside {
+    background: var(--surface); border-right: 1px solid var(--border);
+    padding: 20px 16px; display: flex; flex-direction: column;
+    position: sticky; top: 0; height: 100vh;
+  }
+  .brand { display: flex; align-items: center; gap: 9px; padding: 4px 8px; }
+  .brand .mark {
+    width: 26px; height: 26px; border-radius: 7px; background: var(--brand);
+    display: flex; align-items: center; justify-content: center; color: #fff;
+    font-weight: 700; font-size: 13px; flex-shrink: 0;
+  }
+  .brand .name { font-weight: 700; font-size: 15px; letter-spacing: -0.01em; }
+
+  .tenant-badge {
+    display: flex; align-items: center; gap: 8px; background: var(--surface-raised);
+    border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px;
+    margin: 14px 0 18px; font-size: 12.5px; color: var(--ink-secondary);
+    cursor: pointer; width: 100%; text-align: left;
+  }
+  .tenant-badge:hover { border-color: var(--ink-muted); }
+  .tenant-badge .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--good); flex-shrink: 0; }
+  .tenant-badge strong { color: var(--ink); font-weight: 600; }
+  .tenant-badge .caret { margin-left: auto; color: var(--ink-muted); font-size: 10px; }
+
+  nav.side { display: flex; flex-direction: column; gap: 2px; }
+  nav.side button {
+    display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
+    padding: 9px 10px; border-radius: 7px; font-size: 13.5px; font-weight: 500;
+    color: var(--ink-secondary); background: none; border: none; cursor: pointer;
+  }
+  nav.side button .ico { width: 16px; text-align: center; opacity: 0.85; }
+  nav.side button:hover { background: var(--surface-raised); color: var(--ink); }
+  nav.side button.active { background: var(--brand-wash); color: var(--brand-deep); font-weight: 600; }
+  .nav-count {
+    margin-left: auto; background: var(--critical); color: #fff; font-size: 10px;
+    font-weight: 700; padding: 1px 6px; border-radius: 100px; min-width: 18px; text-align: center;
+  }
+
+  .side-footer { margin-top: auto; padding-top: 14px; border-top: 1px solid var(--border); display: flex; align-items: center; gap: 9px; }
+  .avatar {
+    width: 28px; height: 28px; border-radius: 50%; background: var(--brand-deep); color: #fff;
+    display: flex; align-items: center; justify-content: center; font-size: 11.5px; font-weight: 700; flex-shrink: 0;
+  }
+  .side-footer .who { font-size: 12.5px; }
+  .side-footer .who .role { color: var(--ink-muted); font-size: 11px; }
+
+  /* ---------- topbar ---------- */
+  .topbar {
+    position: sticky; top: 0; z-index: 20; background: var(--surface);
+    border-bottom: 1px solid var(--border); padding: 12px 26px;
+    display: flex; align-items: center; justify-content: space-between; gap: 14px;
+  }
+  .search-wrap { flex: 1; min-width: 0; max-width: 360px; position: relative; }
+  .search-wrap input {
+    width: 100%; font: inherit; font-size: 13px; padding: 8px 12px 8px 32px;
+    background: var(--page); border: 1px solid var(--border); border-radius: 8px; color: var(--ink);
+  }
+  .search-wrap .sico { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); color: var(--ink-muted); font-size: 12px; pointer-events: none; }
+  .search-results {
+    position: absolute; top: calc(100% + 6px); left: 0; right: 0; background: var(--surface-raised);
+    border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow);
+    max-height: 300px; overflow-y: auto; z-index: 40;
+  }
+  .search-results .sr {
+    padding: 9px 13px; font-size: 13px; cursor: pointer; border-bottom: 1px solid var(--gridline);
+    display: flex; justify-content: space-between; gap: 10px;
+  }
+  .search-results .sr:last-child { border-bottom: none; }
+  .search-results .sr:hover, .search-results .sr.on { background: var(--brand-wash); }
+  .search-results .sr .kind { font-size: 11px; color: var(--ink-muted); }
+  .sr-hit { background: none; color: var(--brand-deep); font-weight: 700; }
+  .search-results .empty { padding: 14px; font-size: 12.5px; color: var(--ink-muted); text-align: center; }
+
+  .topbar-right { display: flex; align-items: center; gap: 9px; }
+  .seg { display: flex; background: var(--page); border: 1px solid var(--border); border-radius: 8px; padding: 2px; }
+  .seg button {
+    background: none; border: none; font-size: 12px; font-weight: 600; padding: 5px 10px;
+    border-radius: 6px; color: var(--ink-muted); cursor: pointer;
+  }
+  .seg button.active { background: var(--surface-raised); color: var(--ink); box-shadow: 0 1px 2px rgba(0,0,0,0.06); }
+
+  .btn {
+    display: inline-flex; align-items: center; gap: 7px; font-weight: 600; font-size: 13px;
+    padding: 9px 16px; border-radius: 8px; border: 1px solid transparent; cursor: pointer; text-decoration: none;
+  }
+  .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+  .btn-primary { background: var(--brand); color: #fff; }
+  .btn-primary:hover:not(:disabled) { background: var(--brand-deep); }
+  .btn-ghost { background: var(--surface-raised); border-color: var(--border); color: var(--ink); }
+  .btn-ghost:hover:not(:disabled) { border-color: var(--ink-muted); }
+  .btn-danger { background: var(--critical); color: #fff; }
+  .btn-sm { padding: 6px 11px; font-size: 12px; }
+
+  main { padding: 24px 26px 72px; max-width: 1240px; }
+  .page-head { margin-bottom: 20px; }
+  .page-head h1 { font-size: 1.35rem; font-weight: 700; margin: 0 0 4px; letter-spacing: -0.01em; }
+  .page-head p { color: var(--ink-secondary); font-size: 13.5px; margin: 0; }
+
+  /* ---------- attention ---------- */
+  .attention {
+    background: var(--critical-bg); border: 1px solid rgba(208,59,59,0.25);
+    border-radius: 12px; padding: 15px 18px; margin-bottom: 22px;
+  }
+  .attention.clear { background: var(--good-wash); border-color: rgba(12,163,12,0.25); }
+  .attention-head { display: flex; align-items: center; gap: 8px; margin-bottom: 11px; }
+  .attention-head h2 { font-size: 13.5px; font-weight: 700; margin: 0; color: var(--critical-text); }
+  .attention.clear .attention-head h2 { color: var(--good-text); }
+  .attention-head .count { font-size: 12px; color: var(--ink-muted); }
+  .attention-list { display: grid; gap: 8px; }
+  .attention-item {
+    display: flex; align-items: center; gap: 12px; background: var(--surface-raised);
+    border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px;
+  }
+  .attention-item .text { flex: 1; font-size: 13px; min-width: 0; }
+  .attention-item .text .sub { color: var(--ink-muted); font-size: 12px; }
+  .attention-item .amt { font-weight: 700; font-size: 13px; white-space: nowrap; }
+  .sev { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+  .sev.critical { background: var(--critical); }
+  .sev.warning { background: var(--warning); }
+  .empty-state { text-align: center; padding: 28px 18px; color: var(--ink-muted); font-size: 13px; }
+
+  /* ---------- KPI ---------- */
+  .kpi-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 13px; margin-bottom: 22px; }
+  @media (max-width: 980px) { .kpi-row { grid-template-columns: 1fr 1fr; } }
+  .kpi-card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+    padding: 15px 17px; cursor: pointer; text-align: left; width: 100%; min-width: 0;
+  }
+  .kpi-card:hover { border-color: var(--ink-muted); }
+  .kpi-label { font-size: 12px; color: var(--ink-muted); margin-bottom: 7px; font-weight: 500; }
+  .kpi-value-row { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 8px; }
+  .kpi-value { font-size: 1.5rem; font-weight: 700; letter-spacing: -0.01em; }
+  .kpi-delta { font-size: 11.5px; font-weight: 700; padding: 2px 7px; border-radius: 100px; white-space: nowrap; }
+  .kpi-delta.good { background: var(--good-wash); color: var(--good-text); }
+  .kpi-delta.bad { background: var(--critical-bg); color: var(--critical-text); }
+  .kpi-delta.neutral { background: var(--gridline); color: var(--ink-secondary); }
+  .kpi-foot { font-size: 11px; color: var(--ink-muted); margin-top: 8px; }
+  .spark { display: block; width: 100%; height: 28px; margin-top: 8px; }
+
+  /* ---------- panels ---------- */
+  .content-grid { display: grid; grid-template-columns: 1.5fr 1fr; gap: 18px; align-items: start; }
+  @media (max-width: 980px) { .content-grid { grid-template-columns: 1fr; } }
+  .stack { display: grid; gap: 18px; }
+  .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+  .panel-head {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    padding: 13px 17px; border-bottom: 1px solid var(--border);
+  }
+  .panel-head h2 { font-size: 13.5px; font-weight: 700; margin: 0; }
+  .panel-head .sub { font-size: 11.5px; color: var(--ink-muted); font-weight: 400; }
+  .link-btn { background: none; border: none; font-size: 12px; color: var(--brand-deep); font-weight: 600; cursor: pointer; padding: 0; }
+  .link-btn:hover { text-decoration: underline; }
+  .panel-pad { padding: 15px 17px; }
+
+  .chip-row { display: flex; gap: 6px; padding: 10px 17px 2px; flex-wrap: wrap; }
+  .chip {
+    font-size: 11.5px; font-weight: 600; padding: 5px 11px; border-radius: 100px;
+    border: 1px solid var(--border); color: var(--ink-secondary); background: var(--surface-raised); cursor: pointer;
+  }
+  .chip.active { background: var(--brand-wash); border-color: transparent; color: var(--brand-deep); }
+
+  /* ---------- inbox ---------- */
+  .inbox-item { display: flex; align-items: flex-start; gap: 12px; padding: 12px 17px; border-bottom: 1px solid var(--gridline); }
+  .inbox-item:last-child { border-bottom: none; }
+  .inbox-item.unread { background: var(--surface-raised); }
+  .inbox-item.sla-warm { border-left: 3px solid var(--warning); }
+  .inbox-item.sla-hot { border-left: 3px solid var(--critical); }
+  .inbox-time.sla-warm { color: var(--warning-text); font-weight: 700; }
+  .inbox-time.sla-hot { color: var(--critical-text); font-weight: 700; }
+  .chan-ico {
+    width: 30px; height: 30px; border-radius: 8px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center; font-size: 13px;
+  }
+  .chan-ico.call { background: var(--brand-wash); color: var(--brand-deep); }
+  .chan-ico.text { background: rgba(38,106,191,0.10); color: var(--seq-500); }
+  .chan-ico.email { background: rgba(137,135,129,0.14); color: var(--ink-secondary); }
+  .chan-ico.walkin { background: var(--warning-bg); color: var(--warning-text); }
+  .inbox-main { flex: 1; min-width: 0; }
+  .inbox-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .inbox-name { font-weight: 600; font-size: 13.5px; }
+  .inbox-time { font-size: 11.5px; color: var(--ink-muted); white-space: nowrap; }
+  .inbox-snippet { font-size: 13px; color: var(--ink-secondary); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .inbox-bottom { display: flex; align-items: center; gap: 7px; margin-top: 8px; flex-wrap: wrap; }
+
+  .pill { font-size: 10.5px; font-weight: 700; padding: 2px 8px; border-radius: 100px; letter-spacing: 0.02em; white-space: nowrap; }
+  .pill.new { background: rgba(38,106,191,0.12); color: var(--seq-500); }
+  .pill.missed { background: var(--critical-bg); color: var(--critical-text); }
+  .pill.waiting { background: var(--warning-bg); color: var(--warning-text); }
+  .pill.done { background: var(--good-wash); color: var(--good-text); }
+  .pill.draft { background: var(--gridline); color: var(--ink-secondary); }
+
+  /* ---------- forms ---------- */
+  .field { margin-bottom: 12px; }
+  .field label { display: block; font-size: 11.5px; font-weight: 600; color: var(--ink-secondary); margin-bottom: 5px; }
+  .field input, .field select, .field textarea {
+    width: 100%; font: inherit; font-size: 13px; padding: 8px 10px;
+    border: 1px solid var(--border); border-radius: 7px; background: var(--surface-raised); color: var(--ink);
+  }
+  .field textarea { resize: vertical; min-height: 60px; }
+  .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .field-err { color: var(--critical-text); font-size: 11.5px; margin-top: 4px; display: none; }
+  .field.invalid input, .field.invalid select { border-color: var(--critical); }
+  .field.invalid .field-err { display: block; }
+
+  /* ---------- charts ---------- */
+  .chart-wrap { padding: 4px 17px 16px; }
+  .chart-legend { display: flex; gap: 15px; margin-bottom: 12px; font-size: 12px; color: var(--ink-secondary); flex-wrap: wrap; }
+  .chart-legend .lg { display: flex; align-items: center; gap: 6px; }
+  .lg .sw { width: 10px; height: 10px; border-radius: 2px; }
+  .bars { display: flex; align-items: flex-end; gap: 9px; height: 124px; }
+  .bar-group { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+  .bar-stack { width: 100%; max-width: 34px; height: 102px; position: relative; display: flex; align-items: flex-end; justify-content: center; cursor: pointer; }
+  .bar-billed, .bar-collected { border-radius: 3px 3px 0 0; position: absolute; bottom: 0; }
+  .bar-billed { width: 100%; background: var(--seq-300); opacity: 0.45; }
+  .bar-collected { width: 58%; left: 21%; background: var(--seq-500); }
+  .bar-month { font-size: 10.5px; color: var(--ink-muted); }
+
+  .aging { display: grid; gap: 9px; }
+  .aging-row { display: grid; grid-template-columns: 74px 1fr 68px; align-items: center; gap: 10px; font-size: 12.5px; }
+  .aging-row .lbl { color: var(--ink-secondary); }
+  .aging-track { height: 20px; background: var(--gridline); border-radius: 4px; overflow: hidden; }
+  .aging-fill { height: 100%; border-radius: 4px; }
+  .aging-row .val { text-align: right; font-weight: 600; }
+
+  /* ---------- tables ---------- */
+  .tbl-scroll { overflow-x: auto; }
+  table.data { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 620px; }
+  table.data th {
+    text-align: left; font-size: 11px; font-weight: 700; color: var(--ink-muted);
+    letter-spacing: 0.04em; text-transform: uppercase; padding: 10px 17px;
+    border-bottom: 1px solid var(--border); white-space: nowrap;
+  }
+  table.data th.right, table.data td.right { text-align: right; }
+  table.data td { padding: 11px 17px; border-bottom: 1px solid var(--gridline); vertical-align: middle; }
+  table.data tr:last-child td { border-bottom: none; }
+  table.data tbody tr:hover { background: var(--surface-raised); }
+  table.data .who { font-weight: 600; }
+  table.data .sub { color: var(--ink-muted); font-size: 11.5px; }
+  .row-actions { display: flex; gap: 6px; justify-content: flex-end; }
+  .row-actions .btn { white-space: nowrap; }
+
+  /* ---------- settings ---------- */
+  .set-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; align-items: start; }
+  @media (max-width: 900px) { .set-grid { grid-template-columns: 1fr; } }
+  .set-row {
+    display: flex; align-items: center; justify-content: space-between; gap: 14px;
+    padding: 12px 17px; border-bottom: 1px solid var(--gridline);
+  }
+  .set-row:last-child { border-bottom: none; }
+  .set-row .info { min-width: 0; }
+  .set-row .info .t { font-size: 13px; font-weight: 600; }
+  .set-row .info .d { font-size: 11.5px; color: var(--ink-muted); }
+  .toggle {
+    width: 40px; height: 23px; border-radius: 100px; background: var(--gridline);
+    border: none; cursor: pointer; position: relative; flex-shrink: 0; transition: background 0.18s ease;
+  }
+  .toggle::after {
+    content: ""; position: absolute; top: 3px; left: 3px; width: 17px; height: 17px;
+    border-radius: 50%; background: #fff; transition: transform 0.18s ease; box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+  }
+  .toggle.on { background: var(--brand); }
+  .toggle.on::after { transform: translateX(17px); }
+  @media (prefers-reduced-motion: reduce) { .toggle, .toggle::after { transition: none; } }
+
+  .thresh { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+  .thresh input[type=range] { width: 108px; accent-color: var(--brand); }
+  .thresh .v { font-size: 12.5px; font-weight: 700; min-width: 46px; text-align: right; }
+
+  .swatch-row { display: flex; gap: 8px; align-items: center; }
+  .swatch { width: 26px; height: 26px; border-radius: 6px; border: 2px solid transparent; cursor: pointer; }
+  .swatch.sel { border-color: var(--ink); }
+
+  /* ---------- contacts ---------- */
+  .contact-detail { display: grid; gap: 14px; }
+  .cd-head { display: flex; align-items: center; gap: 12px; }
+  .cd-avatar {
+    width: 44px; height: 44px; border-radius: 50%; background: var(--brand-wash); color: var(--brand-deep);
+    display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 15px; flex-shrink: 0;
+  }
+  .cd-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .cd-stat { background: var(--page); border: 1px solid var(--border); border-radius: 9px; padding: 11px 13px; }
+  .cd-stat .l { font-size: 10.5px; color: var(--ink-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+  .cd-stat .v { font-size: 1.05rem; font-weight: 700; margin-top: 3px; }
+  .timeline { display: grid; gap: 0; }
+  .tl-item { display: flex; gap: 11px; padding: 10px 0; border-bottom: 1px solid var(--gridline); font-size: 13px; }
+  .tl-item:last-child { border-bottom: none; }
+  .tl-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--brand); margin-top: 6px; flex-shrink: 0; }
+  .tl-item .when { color: var(--ink-muted); font-size: 11.5px; }
+
+  /* ---------- modal + toast ---------- */
+  .overlay {
+    position: fixed; inset: 0; background: rgba(11,11,11,0.45); z-index: 100;
+    display: flex; align-items: center; justify-content: center; padding: 20px;
+  }
+  .modal {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+    box-shadow: var(--shadow); width: 100%; max-width: 460px; max-height: 88vh; overflow-y: auto;
+  }
+  .modal.wide { max-width: 580px; }
+  .modal-head { display: flex; align-items: center; justify-content: space-between; padding: 16px 19px; border-bottom: 1px solid var(--border); }
+  .modal-head h3 { margin: 0; font-size: 15px; font-weight: 700; }
+  .modal-close { background: none; border: none; font-size: 19px; color: var(--ink-muted); cursor: pointer; line-height: 1; padding: 0 4px; }
+  .modal-body { padding: 17px 19px; }
+  .modal-foot { display: flex; gap: 9px; justify-content: flex-end; padding: 14px 19px; border-top: 1px solid var(--border); }
+
+  .toast-wrap { position: fixed; bottom: 20px; right: 20px; z-index: 200; display: grid; gap: 9px; }
+  .toast {
+    background: var(--surface-raised); border: 1px solid var(--border); border-left: 3px solid var(--good);
+    border-radius: 9px; box-shadow: var(--shadow); padding: 11px 15px; font-size: 13px;
+    min-width: 250px; max-width: 340px; display: flex; align-items: flex-start; gap: 9px;
+    animation: slidein 0.22s ease;
+  }
+  .toast.err { border-left-color: var(--critical); }
+  .toast.info { border-left-color: var(--seq-500); }
+  .toast .tt { font-weight: 600; }
+  .toast .td { color: var(--ink-secondary); font-size: 12px; margin-top: 1px; }
+  .toast-undo {
+    background: none; border: none; color: var(--brand-deep); font-weight: 700;
+    font-size: 12px; cursor: pointer; padding: 2px 0; flex-shrink: 0; text-decoration: underline;
+  }
+  .toast-undo:hover { color: var(--brand); }
+  @keyframes slidein { from { opacity: 0; transform: translateX(16px); } to { opacity: 1; transform: none; } }
+  @media (prefers-reduced-motion: reduce) { .toast { animation: none; } }
+
+  .hidden { display: none !important; }
+  /* --- goal gradient ring --- */
+  .clear-ring { display: flex; align-items: center; gap: 13px; }
+  .ring-svg { width: 46px; height: 46px; flex-shrink: 0; transform: rotate(-90deg); }
+  .ring-bg { fill: none; stroke: var(--gridline); stroke-width: 5; }
+  .ring-fg { fill: none; stroke: var(--good); stroke-width: 5; stroke-linecap: round; transition: stroke-dashoffset 0.5s cubic-bezier(0.22,1,0.36,1); }
+  @media (prefers-reduced-motion: reduce) { .ring-fg { transition: none; } }
+  .ring-label { font-size: 12px; color: var(--ink-secondary); line-height: 1.35; }
+  .ring-label strong { display: block; font-size: 13.5px; color: var(--ink); font-weight: 700; }
+  .streak-note { margin-top: 3px; font-size: 11.5px; font-weight: 700; color: var(--warning-text); }
+
+  /* --- temporal landmark --- */
+  .landmark {
+    display: flex; align-items: center; gap: 11px; background: var(--brand-wash);
+    border: 1px solid var(--border); border-radius: 11px; padding: 12px 16px; margin-bottom: 16px;
+  }
+  .landmark .lm-ico { font-size: 16px; flex-shrink: 0; }
+  .landmark .lm-text { font-size: 13px; color: var(--brand-deep); flex: 1; }
+  .landmark .lm-text strong { font-weight: 700; }
+
+  /* --- cleared / peak-end state --- */
+  .cleared-hero { text-align: center; padding: 30px 20px 26px; }
+  .cleared-mark {
+    width: 52px; height: 52px; border-radius: 50%; background: var(--good-wash);
+    display: flex; align-items: center; justify-content: center; margin: 0 auto 14px;
+    color: var(--good-text); font-size: 24px; animation: pop 0.45s cubic-bezier(0.34,1.56,0.64,1);
+  }
+  @keyframes pop { 0% { transform: scale(0.4); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) { .cleared-mark { animation: none; } }
+  .cleared-hero h3 { margin: 0 0 7px; font-size: 1.05rem; font-weight: 700; color: var(--good-text); }
+  .cleared-hero p { margin: 0 auto; max-width: 42ch; font-size: 13px; color: var(--ink-secondary); }
+  .cleared-tally { display: flex; justify-content: center; gap: 26px; margin-top: 18px; flex-wrap: wrap; }
+  .cleared-tally .ct { text-align: center; }
+  .cleared-tally .ct .v { font-size: 1.15rem; font-weight: 700; }
+  .cleared-tally .ct .l { font-size: 10.5px; color: var(--ink-muted); text-transform: uppercase; letter-spacing: 0.04em; margin-top: 2px; }
+
+  /* --- scheduled follow-ups --- */
+  .sched-item {
+    display: flex; align-items: center; gap: 11px; padding: 11px 17px;
+    border-bottom: 1px solid var(--gridline); font-size: 13px;
+  }
+  .sched-item:last-child { border-bottom: none; }
+  .sched-when {
+    font-size: 10.5px; font-weight: 700; padding: 3px 9px; border-radius: 100px;
+    background: var(--brand-wash); color: var(--brand-deep); white-space: nowrap; flex-shrink: 0;
+  }
+  .sched-body { flex: 1; min-width: 0; }
+  .sched-body .st { font-weight: 600; }
+  .sched-body .sd { font-size: 11.5px; color: var(--ink-muted); }
+  .sched-item.overdue { background: var(--critical-bg); margin: 0 -17px; padding-left: 14px; padding-right: 17px; }
+  .sched-item.overdue .sched-when { background: var(--critical); color: #fff; }
+  .sched-item.overdue .sched-body .sd { color: var(--critical-text); font-weight: 600; }
+
+  .trigger-opt {
+    display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
+    padding: 11px 13px; border: 1px solid var(--border); border-radius: 9px;
+    background: var(--surface-raised); cursor: pointer; font-size: 13px; margin-bottom: 8px;
+  }
+  .trigger-opt:hover { border-color: var(--brand); }
+  .trigger-opt.sel { border-color: var(--brand); background: var(--brand-wash); }
+  .trigger-opt .to-when { font-weight: 700; color: var(--brand-deep); white-space: nowrap; }
+  .trigger-opt .to-then { color: var(--ink-secondary); }
+
+  /* --- command palette --- */
+  .cmdk-overlay {
+    position: fixed; inset: 0; background: rgba(11,11,11,0.42); z-index: 150;
+    display: flex; align-items: flex-start; justify-content: center; padding: 88px 20px 20px;
+  }
+  .cmdk {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 13px;
+    box-shadow: var(--shadow); width: 100%; max-width: 540px; overflow: hidden;
+  }
+  .cmdk-input {
+    width: 100%; font: inherit; font-size: 15px; padding: 15px 18px; border: none;
+    border-bottom: 1px solid var(--border); background: transparent; color: var(--ink); outline: none;
+  }
+  .cmdk-list { max-height: 340px; overflow-y: auto; padding: 6px; }
+  .cmdk-sec { font-size: 10px; font-weight: 700; color: var(--ink-muted); letter-spacing: 0.06em; text-transform: uppercase; padding: 9px 12px 5px; }
+  .cmdk-item {
+    display: flex; align-items: center; gap: 11px; padding: 9px 12px; border-radius: 8px;
+    cursor: pointer; font-size: 13.5px;
+  }
+  .cmdk-item.on { background: var(--brand-wash); }
+  .cmdk-item .ci-ico { width: 17px; text-align: center; opacity: 0.8; flex-shrink: 0; }
+  .cmdk-item .ci-label { flex: 1; min-width: 0; }
+  .cmdk-item .ci-hint { font-size: 11px; color: var(--ink-muted); }
+  .cmdk-foot {
+    display: flex; gap: 14px; padding: 9px 16px; border-top: 1px solid var(--border);
+    font-size: 11px; color: var(--ink-muted); flex-wrap: wrap;
+  }
+  .kbd {
+    display: inline-block; font-family: ui-monospace, monospace; font-size: 10.5px;
+    background: var(--page); border: 1px solid var(--border); border-bottom-width: 2px;
+    border-radius: 4px; padding: 1px 5px; color: var(--ink-secondary);
+  }
+  .cmdk-empty { padding: 22px; text-align: center; font-size: 13px; color: var(--ink-muted); }
+
+  .note {
+    background: var(--brand-wash); border-radius: 8px; padding: 11px 13px;
+    font-size: 12px; color: var(--brand-deep); margin-bottom: 14px; line-height: 1.5;
+  }
+
+  /* ---------- mobile bottom tabs ----------
+     The sidebar (the only navigation) is hidden below 820px with nothing
+     to replace it, which strands anyone on a phone wherever they land —
+     for a 5-destination app, a thumb-reachable bottom tab bar is the right
+     replacement, not a hamburger drawer (that pattern earns its extra tap
+     when there are too many destinations to show at once; five isn't). */
+  .mobile-tabs { display: none; }
+  @media (max-width: 820px) {
+    .mobile-tabs {
+      display: flex; position: fixed; left: 0; right: 0; bottom: 0; z-index: 30;
+      background: var(--surface); border-top: 1px solid var(--border);
+      padding: 6px 4px calc(6px + env(safe-area-inset-bottom));
+    }
+    .mobile-tabs button {
+      flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px;
+      background: none; border: none; color: var(--ink-muted); font-size: 10.5px; font-weight: 600;
+      padding: 6px 2px; border-radius: 8px; position: relative; cursor: pointer;
+    }
+    .mobile-tabs button .ico { font-size: 18px; line-height: 1; }
+    .mobile-tabs button.active { color: var(--brand-deep); }
+    .mobile-tabs .mt-badge {
+      position: absolute; top: 2px; right: calc(50% - 20px); background: var(--critical); color: #fff;
+      font-size: 9px; font-weight: 700; min-width: 15px; height: 15px; border-radius: 100px;
+      display: flex; align-items: center; justify-content: center; padding: 0 3px;
+    }
+    main { padding-bottom: calc(84px + env(safe-area-inset-bottom)); }
+    .toast-wrap { bottom: calc(76px + env(safe-area-inset-bottom)); }
+    /* .amt plus two action buttons don't shrink, so past ~400px they
+       out-measure the row even with .text at min-width:0 — let the row
+       wrap instead of forcing horizontal scroll. */
+    .attention-item { flex-wrap: wrap; }
+    .attention-item .text { flex: 1 1 100%; }
+
+    /* Touch targets: the MIT Touch Lab (Parhi/Karlson/Bederson, 2006) and
+       Apple's own HIG both land on ~40-44px as the comfortable minimum for
+       a fingertip; .btn-sm is tuned for a mouse pointer at ~26px. These are
+       exactly the buttons a thumb taps most on this screen — Reply, Mark
+       done, Mark paid — so give touch widths more room without changing
+       the denser desktop layout. Row-action gap widens too: a cramped gap
+       between adjacent targets is its own source of mis-taps, independent
+       of each target's own size. */
+    .btn-sm { min-height: 40px; padding: 9px 14px; }
+    .row-actions { gap: 10px; }
+  }
+</style>
+
+<div class="app">
+  <aside>
+    <div class="brand">
+      <div class="mark">S</div>
+      <div class="name">Switchboard</div>
+    </div>
+    <button class="tenant-badge" data-action="switch-tenant">
+      <span class="dot"></span>
+      <span>Viewing <strong id="tenantName">Redline Auto Works</strong></span>
+      <span class="caret">&#9660;</span>
+    </button>
+    <nav class="side" id="nav"></nav>
+    <div class="side-footer">
+      <div class="avatar" id="userInitials">RA</div>
+      <div class="who">Owner<div class="role" id="userTenant">Redline Auto Works</div></div>
+    </div>
+  </aside>
+
+  <div class="main-col">
+    <div class="topbar">
+      <div class="search-wrap">
+        <span class="sico">&#128269;</span>
+        <input type="text" id="search" placeholder="Search contacts, invoices, messages&hellip;" autocomplete="off">
+        <div class="search-results hidden" id="searchResults"></div>
+      </div>
+      <div class="topbar-right">
+        <div class="seg" id="rangeSeg">
+          <button data-action="range" data-range="7">7d</button>
+          <button data-action="range" data-range="30" class="active">30d</button>
+          <button data-action="range" data-range="90">90d</button>
+        </div>
+        <button class="btn btn-ghost" data-action="open-cmdk" title="Command palette"><span class="kbd" style="border:none;background:none;padding:0;">&#8984;K</span></button>
+        <button class="btn btn-primary" data-action="open-capture">+ Log activity</button>
+      </div>
+    </div>
+    <main id="view"></main>
+  </div>
+  <nav class="mobile-tabs" id="mobileTabs" aria-label="Primary"></nav>
+</div>
+
+<div id="modalRoot"></div>
+<div id="cmdkRoot"></div>
+<div class="toast-wrap" id="toastRoot" aria-live="polite" aria-atomic="false"></div>
+
+<script>
+(function () {
+  "use strict";
+
+  // ============ api ============
+  // A 401 means the session cookie expired or was never set — go to the
+  // login page rather than rendering a confusing empty screen.
+  async function api(method, path, body) {
+    const opts = { method, headers: {}, credentials: "same-origin" };
+    if (body !== undefined) {
+      opts.headers["Content-Type"] = "application/json";
+      opts.body = JSON.stringify(body);
+    }
+    const res = await fetch(path, opts);
+    if (res.status === 401) {
+      window.location.href = "/login";
+      throw new Error("Not signed in");
+    }
+    const isCsv = (res.headers.get("content-type") || "").includes("text/csv");
+    const payload = isCsv ? await res.text() : await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const msg = (payload && payload.error) || (res.status + " " + res.statusText);
+      throw new Error(msg);
+    }
+    return payload;
+  }
+
+  // ============ helpers ============
+  const $ = (s, r) => (r || document).querySelector(s);
+  const money = cents => "$" + ((cents || 0) / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const initials = n => String(n || "?").split(/\s+/).map(w => w[0]).join("").replace(/[^A-Za-z]/g, "").slice(0, 2).toUpperCase() || "?";
+
+  function timeAgo(iso) {
+    if (!iso) return "—";
+    const ms = Date.now() - new Date(iso).getTime();
+    if (ms < 0) return "just now";
+    const min = Math.floor(ms / 60000);
+    if (min < 1) return "just now";
+    if (min < 60) return min + " min ago";
+    const hrs = Math.floor(min / 60);
+    if (hrs < 24) return hrs + " hr" + (hrs === 1 ? "" : "s") + " ago";
+    const days = Math.floor(hrs / 24);
+    if (days === 1) return "Yesterday";
+    if (days < 14) return days + " days ago";
+    return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  }
+  function timeTs(iso) { return iso ? Date.now() - new Date(iso).getTime() : Infinity; }
+
+  const CHAN_ICO = { call: "&#128222;", text: "&#128172;", email: "&#9993;", walkin: "&#128694;" };
+  const CHAN_LBL = { call: "Call", text: "Text", email: "Email", walkin: "Walk-in" };
+
+  // A recovery window beats a confirm dialog: "Are you sure?" primes fear
+  // before the action even happens, where undo lets people act at full
+  // speed and only pay attention if they actually got it wrong.
+  function toast(title, desc, kind, undoFn) {
+    const root = $("#toastRoot");
+    const el = document.createElement("div");
+    el.className = "toast" + (kind ? " " + kind : "");
+    el.setAttribute("role", "status");
+    el.innerHTML = '<div style="flex:1;min-width:0;"><div class="tt">' + esc(title) + "</div>" + (desc ? '<div class="td">' + esc(desc) + "</div>" : "") + "</div>" +
+      (undoFn ? '<button class="toast-undo" type="button">Undo</button>' : "");
+    root.appendChild(el);
+    const life = undoFn ? 6000 : 3400;
+    const timer = setTimeout(() => { el.remove(); }, life);
+    if (undoFn) {
+      el.querySelector(".toast-undo").addEventListener("click", () => {
+        clearTimeout(timer);
+        el.remove();
+        undoFn();
+      });
+    }
+  }
+
+  /** Disables the triggering button, runs fn, always re-enables, toasts on failure. */
+  async function withPending(el, fn) {
+    if (el && el.disabled) return;
+    if (el) el.disabled = true;
+    try {
+      await fn();
+    } catch (e) {
+      toast("Something went wrong", e.message || String(e), "err");
+    } finally {
+      if (el) el.disabled = false;
+    }
+  }
+
+  // ============ state (a cache of server responses, not the source of truth) ============
+  const state = {
+    page: "overview",
+    range: 30,
+    tenant: "Redline Auto Works",
+    tenantKey: "redline",
+    inboxFilter: "all",
+    invoiceFilter: "all",
+    contactSort: "recent",
+    search: "",
+    loading: true,
+    loadError: null,
+
+    config: null,
+    summary: null,
+    messages: [],
+    invoices: [],
+    contacts: [],
+    queue: [],
+    progress: { done: 0, total: 1, remaining: 0, pct: 0, streak: 0, open_commitments: 0, overdue_commitments: 0 },
+    scheduled: [],
+    revenue: [],
+    triggerOptions: [],
+    serverSettings: {},
+
+    // Cosmetic only — branding/vocab/module toggles stay env-var driven per
+    // the merge plan; nothing here is persisted server-side.
+    settings: {
+      accent: "#0f7d72",
+      vocabJob: "Repair",
+      vocabIntake: "Enquiry",
+      currency: "USD ($)",
+      modContacts: true,
+      modInvoices: true,
+      modJobs: true,
+      modPayments: true,
+    },
+    cmdk: { open: false, q: "", idx: 0 },
+  };
+
+  const TENANTS = [
+    { key: "redline", name: "Redline Auto Works", vocabJob: "Repair", vocabIntake: "Enquiry", accent: "#c4291d" },
+    { key: "amberlyn", name: "Amberlyn & Co.", vocabJob: "Piece", vocabIntake: "Commission", accent: "#b08d4f" },
+    { key: "greenswell", name: "Greenswell Grounds", vocabJob: "Project", vocabIntake: "Site Visit", accent: "#4f6b4a" }
+  ];
+
+  const TRIGGER_THEN = {
+    "Later today": "when I next open Switchboard",
+    "Tomorrow morning": "first thing tomorrow",
+    "Monday morning": "when the week starts",
+    "Next week": "once things settle down",
+  };
+
+  // ============ view-model builders ============
+  // Real invoice statuses are Draft/Sent/Partial/Paid/Void. Switchboard's UI
+  // was built around a simpler derived set — reconcile them here, once.
+  function invoiceView(inv) {
+    const balance = inv.totals ? inv.totals.balance : 0;
+    const total = inv.totals ? inv.totals.total : 0;
+    let uiStatus = "draft";
+    let days = 0;
+    if (inv.status === "Draft") {
+      uiStatus = "draft";
+    } else if (inv.status === "Paid" || balance <= 0) {
+      uiStatus = "paid";
+    } else {
+      const overdue = inv.due_date ? daysPast(inv.due_date) : 0;
+      if (overdue > 0) { uiStatus = "overdue"; days = overdue; }
+      else { uiStatus = "sent"; days = inv.sent_at ? Math.max(0, daysPast(inv.sent_at.slice(0, 10))) : 0; }
+    }
+    const who = (inv.contact && (inv.contact.name || inv.contact.company)) || "Walk-in";
+    const desc = (inv.items && inv.items.length) ? inv.items.map(i => i.description).join(", ") : (inv.notes || "Service");
+    return { id: inv.id, num: inv.number, who, desc, amount_cents: total, balance_cents: balance, status: uiStatus, days, issued: inv.issue_date || "—", raw: inv };
+  }
+  function daysPast(dateStr) {
+    const due = new Date(dateStr + "T23:59:59Z").getTime();
+    return Math.floor((Date.now() - due) / 86400000);
+  }
+  function invoiceViews() { return state.invoices.filter(i => i.status !== "Void").map(invoiceView); }
+
+  function msgWho(m) { return (m.contact && (m.contact.name || m.contact.company)) || "Unknown"; }
+  function msgSnippet(m) { return m.subject || m.body || (CHAN_LBL[m.channel] || "Activity") + " logged"; }
+
+  function contactViews() {
+    const invByContact = new Map();
+    invoiceViews().forEach(iv => {
+      const k = String(iv.raw.contact_id);
+      if (!invByContact.has(k)) invByContact.set(k, []);
+      invByContact.get(k).push(iv);
+    });
+    const msgByContact = new Map();
+    state.messages.forEach(m => {
+      const k = String(m.contact_id);
+      if (!msgByContact.has(k)) msgByContact.set(k, []);
+      msgByContact.get(k).push(m);
+    });
+    const built = state.contacts.map(c => {
+      const invs = invByContact.get(String(c.id)) || [];
+      const msgs = msgByContact.get(String(c.id)) || [];
+      const ltv = invs.reduce((s, iv) => s + (iv.status === "paid" ? iv.amount_cents : (iv.amount_cents - iv.balance_cents)), 0);
+      const overdue = invs.some(iv => iv.status === "overdue");
+      const missed = msgs.some(m => m.status === "missed");
+      let lastTs = Infinity;
+      msgs.forEach(m => { lastTs = Math.min(lastTs, timeTs(m.occurred_at)); });
+      invs.forEach(iv => { lastTs = Math.min(lastTs, timeTs(iv.raw.updated_at || iv.raw.created_at)); });
+      if (lastTs === Infinity) lastTs = timeTs(c.created_at);
+      const staleDays = Number(state.serverSettings.jobStaleDays || 7) * 4;
+      let flag = null;
+      if (overdue) flag = "overdue";
+      else if (missed) flag = "no-callback";
+      else if (lastTs / 86400000 > staleDays) flag = "stale";
+      else if (!invs.length && !msgs.length) flag = "new";
+      return {
+        id: c.id, name: c.name, phone: c.phone || "—", email: c.email || "—",
+        vehicle: (c.notes || "Not recorded"),
+        ltv, visits: invs.length, last: timeAgo(new Date(Date.now() - lastTs).toISOString()), lastTs, flag,
+        raw: c,
+      };
+    });
+
+    // ServiceTitan's biggest CRM edge over lighter competitors is tracking
+    // customer lifetime value and using it to prioritize attention — a top
+    // customer going quiet is a bigger loss than a one-time walk-in going
+    // quiet, so the UI should say so rather than treating every "stale"
+    // contact the same.
+    const sortedLtv = built.map(c => c.ltv).filter(v => v > 0).sort((a, b) => a - b);
+    const vipThreshold = sortedLtv.length >= 4 ? sortedLtv[Math.floor(sortedLtv.length * 0.75)] : Infinity;
+    built.forEach(c => {
+      c.vip = c.ltv > 0 && c.ltv >= vipThreshold;
+      if (c.vip && c.flag === "stale") c.flag = "stale-vip";
+    });
+    return built;
+  }
+
+  // Maps the seven backend follow-up rules onto Switchboard's attention-item
+  // shape. Invoice rules get a direct one-click action; intake/job rules
+  // (Switchboard has no dedicated screen for those yet) get a view action.
+  const QUEUE_ACTION = {
+    invoice_overdue: { action: "remind-invoice", label: "Send reminder" },
+    invoice_draft: { action: "send-invoice", label: "Send it" },
+  };
+  function attentionItems() {
+    const out = state.queue.map((it, idx) => {
+      const map = QUEUE_ACTION[it.type] || { action: "view-queue-item", label: "View" };
+      return {
+        sev: it.severity === "high" ? "critical" : "warning",
+        text: it.title,
+        sub: it.detail,
+        amt: it.value_cents ? money(it.value_cents) : "",
+        amtCritical: it.severity === "high",
+        action: map.action, id: it.id, idx, label: map.label,
+        kind: it.type,
+      };
+    });
+    const missed = state.messages.filter(m => m.status === "missed");
+    if (missed.length) {
+      out.push({
+        sev: "warning",
+        text: missed.length + " missed call" + (missed.length > 1 ? "s" : "") + ", no callback logged",
+        sub: missed.map(msgWho).join(" · "),
+        amt: "", amtCritical: false,
+        action: "goto-inbox-missed", id: 0, idx: -1, label: "Review",
+        kind: "missed_calls",
+      });
+    }
+    return out;
+  }
+
+  function outstanding_cents() { return state.summary ? state.summary.outstanding_cents : 0; }
+  function overdueViews() { return invoiceViews().filter(i => i.status === "overdue"); }
+  function unreadCount() { return state.messages.filter(m => Number(m.unread)).length; }
+  function missedNoCallback() { return state.messages.filter(m => m.status === "missed"); }
+
+  function clearProgress() { return state.progress; }
+
+  // Fresh-start effect — behaviour changes cluster at temporal landmarks, so the
+  // framing adapts to where in the week/month the owner actually is.
+  function landmark() {
+    const d = new Date();
+    const dow = d.getDay(), dom = d.getDate();
+    const daysInMonth = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+    if (dom === 1) return { ico: "\u{1F5D3}", text: "<strong>First of the month.</strong> Clean slate on the books — last month's stragglers are the ones to settle before they age another cycle." };
+    if (dow === 1) return { ico: "☀", text: "<strong>Monday.</strong> Fresh week — clearing the queue now sets the tone for the next five days, and the list is at its shortest." };
+    if (dow === 5) return { ico: "\u{1F3C1}", text: "<strong>Friday.</strong> Anything left open crosses the weekend and lands back on you Monday, two days older." };
+    if (dom >= daysInMonth - 2) return { ico: "\u{1F4C6}", text: "<strong>Month-end in " + (daysInMonth - dom + 1) + " day" + (daysInMonth - dom === 0 ? "" : "s") + ".</strong> Invoices settled before the turn land in this month's numbers." };
+    if (dow === 0 || dow === 6) return { ico: "\u{1F4AC}", text: "<strong>Weekend.</strong> Nothing here needs doing today — scheduling it for Monday means it is waiting for you rather than nagging you." };
+    const toMon = (8 - dow) % 7 || 7;
+    return { ico: "\u{1F4CD}", text: "<strong>Midweek.</strong> " + toMon + " day" + (toMon === 1 ? "" : "s") + " until the Monday reset — anything not cleared by then rolls into next week's list." };
+  }
+
+  function agingBuckets() {
+    // aging is fetched fresh from the server; state.aging holds [{label,total_cents}]
+    return (state.aging || []).map((b, i) => ({
+      lbl: b.label, total: b.total_cents / 100,
+      color: ["var(--seq-250)", "var(--seq-350)", "var(--seq-450)", "var(--seq-550)"][i] || "var(--seq-500)",
+    }));
+  }
+
+  // ============ nav ============
+  // Zeigarnik effect: an unresolved commitment you made to yourself is worth
+  // the same visible-badge treatment as an unread message — both are open
+  // loops that stay in mind (and get acted on) more reliably when they stay
+  // visible, rather than only surfacing once you happen to scroll to them.
+  const PAGES = [
+    { key: "overview", label: "Overview", ico: "&#9673;", badge: () => state.progress.overdue_commitments || 0 },
+    { key: "inbox", label: "Inbox", ico: "&#9993;", badge: unreadCount },
+    { key: "payments", label: "Payments", ico: "&#128179;" },
+    { key: "contacts", label: "Contacts", ico: "&#128100;" },
+    { key: "settings", label: "Settings", ico: "&#9881;" }
+  ];
+
+  function renderNav() {
+    $("#nav").innerHTML = PAGES.map(p => {
+      const n = p.badge ? p.badge() : 0;
+      return '<button data-action="nav" data-page="' + p.key + '" class="' + (state.page === p.key ? "active" : "") + '">' +
+        '<span class="ico">' + p.ico + "</span>" + p.label +
+        (n ? '<span class="nav-count">' + n + "</span>" : "") + "</button>";
+    }).join("");
+    $("#mobileTabs").innerHTML = PAGES.map(p => {
+      const n = p.badge ? p.badge() : 0;
+      return '<button data-action="nav" data-page="' + p.key + '" class="' + (state.page === p.key ? "active" : "") + '" aria-current="' + (state.page === p.key ? "page" : "false") + '">' +
+        '<span class="ico">' + p.ico + "</span>" + p.label +
+        (n ? '<span class="mt-badge">' + n + "</span>" : "") + "</button>";
+    }).join("");
+  }
+
+  // ============ pages ============
+  function pageLoading() {
+    return '<div class="page-head"><h1>Loading&hellip;</h1><p>Fetching the latest from the server.</p></div>';
+  }
+  function pageError() {
+    return '<div class="page-head"><h1>Couldn’t load Switchboard</h1><p>' + esc(state.loadError) + '</p></div>' +
+      '<button class="btn btn-primary" data-action="retry-load">Try again</button>';
+  }
+
+  /**
+   * A commitment you already made to yourself ("I will call them back
+   * Monday morning") is a stronger, more honest prompt once it's actually
+   * due and still open — that's commitment-and-consistency at work, not
+   * a manufactured deadline. Overdue ones get the same visual weight as an
+   * overdue invoice; ones still ahead of schedule stay calm.
+   */
+  function renderCommitmentsPanel() {
+    const now = new Date().toISOString();
+    const overdue = state.scheduled.filter(s => s.trigger_at <= now).sort((a, b) => a.trigger_at < b.trigger_at ? -1 : 1);
+    const upcoming = state.scheduled.filter(s => s.trigger_at > now).sort((a, b) => a.trigger_at < b.trigger_at ? -1 : 1);
+
+    function schedRow(s, isOverdue) {
+      return '<div class="sched-item' + (isOverdue ? " overdue" : "") + '">' +
+        (isOverdue ? '<span class="sev critical"></span>' : "") +
+        '<span class="sched-when">' + esc(s.trigger_label) + "</span>" +
+        '<div class="sched-body"><div class="st">' + esc(s.label) + '</div><div class="sd">' +
+          (isOverdue ? "You said " + esc(s.trigger_label).toLowerCase() + " — still open" : "Committed " + new Date(s.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })) +
+        "</div></div>" +
+        '<button class="btn btn-ghost btn-sm" data-action="do-scheduled" data-id="' + s.id + '">Do it now</button>' +
+        '<button class="btn btn-ghost btn-sm" data-action="drop-scheduled" data-id="' + s.id + '">Drop</button>' +
+      "</div>";
+    }
+
+    return '<div class="panel" style="margin-bottom:22px;">' +
+      '<div class="panel-head"><h2>' + (overdue.length ? "Commitments — " + overdue.length + " overdue" : "Scheduled follow-ups") + ' <span class="sub">— decided in advance</span></h2>' +
+      '<span class="sub">' + state.scheduled.length + " total</span></div>" +
+      "<div>" +
+        overdue.map(s => schedRow(s, true)).join("") +
+        upcoming.map(s => schedRow(s, false)).join("") +
+      "</div>" +
+    "</div>";
+  }
+
+  function pageOverview() {
+    const items = attentionItems();
+    const out = outstanding_cents();
+    const od = overdueViews();
+    const revenue = state.revenue;
+    const maxBar = Math.max.apply(null, revenue.map(r => r.billed_cents).concat([1]));
+    const prog = clearProgress();
+    const lm = landmark();
+    const C = 2 * Math.PI * 20;
+    const summary = state.summary || {};
+
+    // Streak framed as something already earned, not a bare counter — loss
+    // aversion makes "don't break it" a stronger pull than "start one."
+    const streakNote = prog.streak >= 2
+      ? '<div class="streak-note">&#128293; ' + prog.streak + '-day clean-queue streak</div>'
+      : "";
+    const ring =
+      '<div class="clear-ring">' +
+        '<svg class="ring-svg" viewBox="0 0 46 46" aria-hidden="true">' +
+          '<circle class="ring-bg" cx="23" cy="23" r="20"></circle>' +
+          '<circle class="ring-fg" cx="23" cy="23" r="20" stroke-dasharray="' + C.toFixed(1) + '" stroke-dashoffset="' + (C * (1 - prog.pct)).toFixed(1) + '"></circle>' +
+        "</svg>" +
+        '<div class="ring-label"><strong>' + prog.done + " of " + prog.total + " cleared</strong>" +
+        (prog.remaining ? (prog.remaining === 1 ? "One left — finish the set." : prog.remaining + " to go today.") : "Queue is empty.") +
+        streakNote + "</div>" +
+      "</div>";
+
+    const attentionInner = items.length
+      ? '<div class="attention-list">' + items.map(it =>
+          '<div class="attention-item">' +
+            '<span class="sev ' + it.sev + '"></span>' +
+            '<div class="text">' + esc(it.text) + '<div class="sub">' + esc(it.sub) + "</div></div>" +
+            (it.amt ? '<div class="amt tab" style="' + (it.amtCritical ? "color:var(--critical-text)" : "") + '">' + it.amt + "</div>" : "") +
+            '<button class="btn btn-ghost btn-sm" data-action="schedule-item" data-kind="' + it.action + '" data-id="' + it.id + '" data-label="' + esc(it.text) + '" title="Decide when you will do this">When?</button>' +
+            '<button class="btn btn-ghost btn-sm" data-action="' + it.action + '" data-id="' + it.id + '" data-idx="' + it.idx + '">' + it.label + "</button>" +
+          "</div>").join("") + "</div>"
+      : '<div class="cleared-hero">' +
+          '<div class="cleared-mark">&#10003;</div>' +
+          "<h3>Queue cleared</h3>" +
+          "<p>Every invoice is current, every call has been returned, and no estimate is sitting unanswered. Nothing on this screen needs you.</p>" +
+          '<div class="cleared-tally">' +
+            '<div class="ct"><div class="v tab">' + prog.done + '</div><div class="l">Items cleared</div></div>' +
+            '<div class="ct"><div class="v tab" style="color:var(--good-text)">' + money(0) + '</div><div class="l">Chased today</div></div>' +
+            '<div class="ct"><div class="v tab">' + state.scheduled.length + '</div><div class="l">Scheduled ahead</div></div>' +
+          "</div>" +
+        "</div>";
+
+    return '' +
+    '<div class="page-head"><h1>Overview</h1><p>Everything that happened, and the three things that need you today.</p></div>' +
+
+    '<div class="landmark"><span class="lm-ico">' + lm.ico + '</span><div class="lm-text">' + lm.text + "</div>" +
+      (state.scheduled.length ? '<span class="sub" style="white-space:nowrap;">' + state.scheduled.length + " committed</span>" : "") +
+    "</div>" +
+
+    '<div class="attention' + (items.length ? "" : " clear") + '">' +
+      '<div class="attention-head" style="justify-content:space-between;">' +
+        '<div style="display:flex;align-items:center;gap:8px;">' +
+          '<span class="sev ' + (items.length ? "critical" : "") + '" style="' + (items.length ? "" : "background:var(--good)") + '"></span>' +
+          "<h2>" + (items.length ? "Needs attention today" : "All clear — nothing needs you right now") + "</h2>" +
+          (items.length ? '<span class="count">— ' + items.length + " item" + (items.length > 1 ? "s" : "") + "</span>" : "") +
+        "</div>" + ring +
+      "</div>" + attentionInner +
+    "</div>" +
+
+    (state.scheduled.length ? renderCommitmentsPanel() : "") +
+
+    '<div class="kpi-row">' +
+      kpi("Revenue, month to date", money(summary.collected_this_month_cents), "&#8593;", "good", "0,24 33,20 66,18 100,12 133,10 166,6 200,2", "var(--good)", money(summary.billed_this_month_cents) + " billed this month", "goto-payments") +
+      kpi("Open balance (AR)", money(out), od.length + " overdue", od.length ? "bad" : "neutral", "0,10 33,14 66,12 100,18 133,16 166,22 200,20", "var(--critical)", (summary.overdue_count || 0) + " invoices past due", "goto-payments") +
+      kpi("Unreturned contacts", String(summary.unreturned_count || 0), missedNoCallback().length ? "action needed" : "clear", missedNoCallback().length ? "bad" : "good", "0,22 33,18 66,20 100,14 133,10 166,12 200,4", "var(--seq-500)", "Missed calls + unread messages", "goto-inbox") +
+      responseTimeKpi(summary) +
+    "</div>" +
+
+    '<div class="content-grid">' +
+      '<div class="panel">' +
+        '<div class="panel-head"><h2>Inbox <span class="sub">— calls, texts &amp; email</span></h2>' +
+        '<button class="link-btn" data-action="nav" data-page="inbox">View all</button></div>' +
+        '<div>' + state.messages.slice(0, 6).map(inboxRow).join("") + "</div>" +
+      "</div>" +
+
+      '<div class="stack">' +
+        '<div class="panel">' +
+          '<div class="panel-head"><h2>Quick capture</h2><span class="sub"><span class="kbd">N</span></span></div>' +
+          '<div class="panel-pad">' + captureForm("qc") + "</div>" +
+        "</div>" +
+
+        '<div class="panel">' +
+          '<div class="panel-head"><h2>Billed vs. collected</h2><span class="sub">6 months</span></div>' +
+          '<div class="chart-wrap">' +
+            '<div class="chart-legend">' +
+              '<div class="lg"><span class="sw" style="background:var(--seq-300);opacity:0.45;"></span>Billed</div>' +
+              '<div class="lg"><span class="sw" style="background:var(--seq-500);"></span>Collected</div>' +
+            "</div>" +
+            '<div class="bars">' + revenue.map(r =>
+              '<div class="bar-group">' +
+                '<div class="bar-stack" data-action="explain-month" data-month="' + r.month + '" title="' + r.month + ': billed ' + money(r.billed_cents) + ', collected ' + money(r.collected_cents) + '">' +
+                  '<div class="bar-billed" style="height:' + (r.billed_cents / maxBar * 100) + '%"></div>' +
+                  '<div class="bar-collected" style="height:' + (r.collected_cents / maxBar * 100) + '%"></div>' +
+                "</div>" +
+                '<div class="bar-month">' + r.month.slice(5) + "</div>" +
+              "</div>").join("") + "</div>" +
+          "</div>" +
+        "</div>" +
+
+        '<div class="panel">' +
+          '<div class="panel-head"><h2>Outstanding invoices</h2>' +
+          '<button class="link-btn" data-action="nav" data-page="payments">Manage</button></div>' +
+          '<div>' + invoiceViews().filter(i => i.status !== "paid").slice(0, 4).map(invMiniRow).join("") + "</div>" +
+        "</div>" +
+      "</div>" +
+    "</div>";
+  }
+
+  function formatMinutes(m) {
+    if (m < 60) return Math.round(m) + " min";
+    const h = Math.floor(m / 60), rem = Math.round(m % 60);
+    return h + "h " + (rem ? rem + "m" : "");
+  }
+
+  /**
+   * Real median first-response-time (this 30 days vs. the prior 30) —
+   * replaces what used to be a hardcoded "9 min ↓13 min" placeholder.
+   * Shows an honest "No replies yet" rather than fabricating a number
+   * before there's any reply data to compute from.
+   */
+  function responseTimeKpi(summary) {
+    const cur = summary.median_response_minutes;
+    const prior = summary.prior_median_response_minutes;
+    if (cur === null || cur === undefined) {
+      return kpi("Avg. response time", "—", "no data yet", "neutral",
+        "0,15 33,15 66,15 100,15 133,15 166,15 200,15", "var(--ink-muted)",
+        "Reply to a message to start tracking this", "explain-response");
+    }
+    let delta = "first 30-day reading", tone = "neutral";
+    if (prior !== null && prior !== undefined) {
+      const diff = prior - cur;
+      tone = diff > 0 ? "good" : diff < 0 ? "bad" : "neutral";
+      delta = (diff > 0 ? "&#8595; " : diff < 0 ? "&#8593; " : "") + formatMinutes(Math.abs(diff)) + " vs. prior 30d";
+    }
+    return kpi("Avg. response time", formatMinutes(cur), delta, tone,
+      "0,4 33,8 66,10 100,14 133,18 166,22 200,24", "var(--good)",
+      "Median time to first reply, last 30 days", "explain-response");
+  }
+
+  function kpi(label, value, delta, tone, points, stroke, foot, action) {
+    return '<button class="kpi-card" data-action="' + action + '">' +
+      '<div class="kpi-label">' + label + "</div>" +
+      '<div class="kpi-value-row"><div class="kpi-value tab">' + value + "</div>" +
+      '<div class="kpi-delta ' + tone + '">' + delta + "</div></div>" +
+      '<svg class="spark" viewBox="0 0 200 30" preserveAspectRatio="none" aria-hidden="true">' +
+        '<polyline points="' + points + '" fill="none" stroke="' + stroke + '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
+      '<div class="kpi-foot">' + esc(foot) + "</div>" +
+    "</button>";
+  }
+
+  // SLA-style urgency, the way Front/Intercom color-code an open conversation
+  // by real elapsed time rather than a flat "unread" flag — the visual
+  // pressure to respond should grow the longer something genuinely waits.
+  function inboxUrgency(m) {
+    if (m.status !== "new" && m.status !== "missed") return null;
+    const minutes = timeTs(m.occurred_at) / 60000;
+    if (minutes >= 120) return "hot";
+    if (minutes >= 15) return "warm";
+    return null;
+  }
+
+  function inboxRow(m) {
+    const urgency = inboxUrgency(m);
+    return '<div class="inbox-item' + (Number(m.unread) ? " unread" : "") + (urgency ? " sla-" + urgency : "") + '">' +
+      '<div class="chan-ico ' + m.channel + '">' + CHAN_ICO[m.channel] + "</div>" +
+      '<div class="inbox-main">' +
+        '<div class="inbox-top"><span class="inbox-name">' + esc(msgWho(m)) + '</span><span class="inbox-time' + (urgency ? " sla-" + urgency : "") + '">' + timeAgo(m.occurred_at) + "</span></div>" +
+        '<div class="inbox-snippet">' + esc(msgSnippet(m)) + "</div>" +
+        '<div class="inbox-bottom">' +
+          '<span class="pill ' + m.status + '">' + m.status.toUpperCase() + "</span>" +
+          (m.status === "missed" ? '<button class="btn btn-ghost btn-sm" data-action="call-back" data-id="' + m.id + '">Call back</button>' : "") +
+          (m.status === "new" ? '<button class="btn btn-ghost btn-sm" data-action="reply" data-id="' + m.id + '">Reply</button>' : "") +
+          (m.status === "waiting" ? '<button class="btn btn-ghost btn-sm" data-action="reply" data-id="' + m.id + '">Follow up</button>' : "") +
+          (m.status !== "done" ? '<button class="btn btn-ghost btn-sm" data-action="mark-done" data-id="' + m.id + '">Mark done</button>' : "") +
+        "</div>" +
+      "</div>" +
+    "</div>";
+  }
+
+  function invMiniRow(i) {
+    const pillMap = { overdue: "missed", sent: "waiting", draft: "draft", paid: "done" };
+    const lbl = i.status === "overdue" ? "OVERDUE " + i.days + "D" : i.status === "sent" ? "SENT" : i.status.toUpperCase();
+    return '<div class="inbox-item" style="align-items:center;">' +
+      '<div class="inbox-main" style="display:flex;align-items:center;justify-content:space-between;gap:10px;">' +
+        '<div><div style="font-weight:600;font-size:13px;">' + esc(i.who) + '</div><div class="sub" style="color:var(--ink-muted);font-size:11.5px;">' + esc(i.num) + "</div></div>" +
+        '<span class="pill ' + pillMap[i.status] + '">' + lbl + "</span>" +
+        '<div class="tab" style="font-weight:600;">' + money(i.amount_cents) + "</div>" +
+      "</div>" +
+    "</div>";
+  }
+
+  function captureForm(prefix) {
+    return '<div class="field" id="' + prefix + '-nameF"><label for="' + prefix + '-name">Contact name</label>' +
+      '<input type="text" id="' + prefix + '-name" placeholder="e.g. Maria Alvarez">' +
+      '<div class="field-err">Enter a name so this can be filed against a contact.</div></div>' +
+    '<div class="field-row">' +
+      '<div class="field"><label for="' + prefix + '-phone">Phone</label><input type="text" id="' + prefix + '-phone" placeholder="(678) 555-0100"></div>' +
+      '<div class="field"><label for="' + prefix + '-chan">Channel</label><select id="' + prefix + '-chan">' +
+        '<option value="call">Call</option><option value="text">Text</option><option value="email">Email</option><option value="walkin">Walk-in</option>' +
+      "</select></div>" +
+    "</div>" +
+    '<div class="field"><label for="' + prefix + '-note">Note</label>' +
+      '<textarea id="' + prefix + '-note" placeholder="What happened, what\'s next…"></textarea></div>' +
+    '<button class="btn btn-primary" style="width:100%;justify-content:center;" data-action="save-capture" data-prefix="' + prefix + '">Save to inbox</button>';
+  }
+
+  function pageInbox() {
+    const f = state.inboxFilter;
+    let list = state.messages.slice();
+    if (f === "unread") list = list.filter(m => Number(m.unread));
+    else if (f === "missed") list = list.filter(m => m.status === "missed");
+    else if (f !== "all") list = list.filter(m => m.channel === f);
+
+    const chips = [["all", "All"], ["call", "Calls"], ["text", "Texts"], ["email", "Email"], ["walkin", "Walk-ins"], ["unread", "Unread"], ["missed", "Missed"]];
+
+    return '<div class="page-head"><h1>Inbox</h1><p>Every inbound touch in one thread — nothing lives only in someone’s phone.</p></div>' +
+      '<div class="panel">' +
+        '<div class="panel-head"><h2>' + list.length + " message" + (list.length === 1 ? "" : "s") + '<span class="sub"> — ' + unreadCount() + " unread</span></h2>" +
+          '<div style="display:flex;gap:8px;">' +
+            '<button class="btn btn-ghost btn-sm" data-action="mark-all-read">Mark all read</button>' +
+            '<button class="btn btn-primary btn-sm" data-action="open-capture">+ Log activity</button>' +
+          "</div>" +
+        "</div>" +
+        '<div class="chip-row">' + chips.map(c =>
+          '<button class="chip ' + (f === c[0] ? "active" : "") + '" data-action="inbox-filter" data-filter="' + c[0] + '">' + c[1] + "</button>").join("") + "</div>" +
+        '<div style="margin-top:8px;">' +
+          (list.length ? list.map(inboxRow).join("") : '<div class="empty-state">Nothing here with that filter.</div>') +
+        "</div>" +
+      "</div>";
+  }
+
+  function pagePayments() {
+    const f = state.invoiceFilter;
+    let list = invoiceViews();
+    if (f !== "all") list = list.filter(i => i.status === f);
+    const buckets = agingBuckets();
+    const maxB = Math.max.apply(null, buckets.map(b => b.total).concat([1]));
+    const out = outstanding_cents();
+    const paidTotal = invoiceViews().filter(i => i.status === "paid").reduce((s, i) => s + i.amount_cents, 0);
+    const chips = [["all", "All"], ["overdue", "Overdue"], ["sent", "Sent"], ["draft", "Drafts"], ["paid", "Paid"]];
+
+    return '<div class="page-head"><h1>Payments</h1><p>What’s owed, how old it is, and who to chase first.</p></div>' +
+
+    '<div class="kpi-row" style="grid-template-columns:repeat(3,1fr);">' +
+      kpi("Outstanding", money(out), overdueViews().length + " overdue", overdueViews().length ? "bad" : "good", "0,10 33,14 66,12 100,18 133,16 166,22 200,20", "var(--critical)", "56% of US small businesses carry unpaid invoices", "noop") +
+      kpi("Collected this month", money(paidTotal), "&#8593;", "good", "0,24 33,20 66,18 100,12 133,10 166,6 200,2", "var(--good)", "Across " + invoiceViews().filter(i => i.status === "paid").length + " settled invoices", "noop") +
+      kpi("Oldest unpaid", Math.max.apply(null, overdueViews().map(i => i.days).concat([0])) + " days", "past terms", "bad", "0,6 33,9 66,12 100,14 133,17 166,20 200,24", "var(--critical)", "Industry: ~1 in 10 invoices pass 30 days", "noop") +
+    "</div>" +
+
+    '<div class="content-grid">' +
+      '<div class="panel">' +
+        '<div class="panel-head"><h2>Invoices</h2>' +
+          '<button class="btn btn-primary btn-sm" data-action="new-invoice">+ New invoice</button></div>' +
+        '<div class="chip-row">' + chips.map(c =>
+          '<button class="chip ' + (f === c[0] ? "active" : "") + '" data-action="invoice-filter" data-filter="' + c[0] + '">' + c[1] + "</button>").join("") + "</div>" +
+        '<div class="tbl-scroll" style="margin-top:8px;"><table class="data"><thead><tr>' +
+          "<th>Customer</th><th>Status</th><th class='right'>Amount</th><th class='right'>Action</th>" +
+        "</tr></thead><tbody>" +
+        (list.length ? list.map(i => {
+          const pillMap = { overdue: "missed", sent: "waiting", draft: "draft", paid: "done" };
+          const lbl = i.status === "overdue" ? "OVERDUE " + i.days + "D" : i.status === "sent" ? "SENT" : i.status.toUpperCase();
+          return "<tr>" +
+            '<td><div class="who">' + esc(i.who) + '</div><div class="sub">' + esc(i.num) + " · " + esc(i.desc) + "</div></td>" +
+            '<td><span class="pill ' + pillMap[i.status] + '">' + lbl + "</span></td>" +
+            '<td class="right tab" style="font-weight:600;' + (i.status === "paid" ? "color:var(--ink-muted);" : "") + '">' + money(i.amount_cents) + "</td>" +
+            '<td class="right"><div class="row-actions">' +
+              (i.status === "overdue" ? '<button class="btn btn-ghost btn-sm" data-action="remind-invoice" data-id="' + i.id + '">Remind</button>' : "") +
+              (i.status === "draft" ? '<button class="btn btn-ghost btn-sm" data-action="send-invoice" data-id="' + i.id + '">Send</button>' : "") +
+              (i.status === "sent" ? '<button class="btn btn-ghost btn-sm" data-action="chase-estimate" data-id="' + i.id + '">Follow up</button>' : "") +
+              (i.status !== "paid" ? '<button class="btn btn-primary btn-sm" data-action="mark-paid" data-id="' + i.id + '">Mark paid</button>' : '<span class="sub">Settled</span>') +
+            "</div></td></tr>";
+        }).join("") : '<tr><td colspan="4"><div class="empty-state">No invoices with that filter.</div></td></tr>') +
+        "</tbody></table></div>" +
+      "</div>" +
+
+      '<div class="stack">' +
+        '<div class="panel">' +
+          '<div class="panel-head"><h2>AR aging</h2><span class="sub">days outstanding</span></div>' +
+          '<div class="panel-pad"><div class="aging">' +
+            buckets.map(b =>
+              '<div class="aging-row">' +
+                '<div class="lbl">' + b.lbl + "</div>" +
+                '<div class="aging-track"><div class="aging-fill" style="width:' + (b.total / maxB * 100) + "%;background:" + b.color + ';"></div></div>' +
+                '<div class="val tab">' + money(b.total * 100) + "</div>" +
+              "</div>").join("") +
+          "</div>" +
+          '<div class="kpi-foot" style="margin-top:12px;">Anything past 60 days collects at a materially lower rate — chase the dark bars first.</div>' +
+          "</div>" +
+        "</div>" +
+
+        '<div class="panel">' +
+          '<div class="panel-head"><h2>Bulk actions</h2></div>' +
+          '<div class="panel-pad" style="display:grid;gap:9px;">' +
+            '<button class="btn btn-ghost" style="justify-content:center;" data-action="remind-all">Send reminder to all ' + overdueViews().length + " overdue</button>" +
+            '<button class="btn btn-ghost" style="justify-content:center;" data-action="export-csv">Export statement (CSV)</button>' +
+            '<button class="btn btn-ghost" style="justify-content:center;" data-action="new-invoice">Create invoice</button>' +
+          "</div>" +
+        "</div>" +
+      "</div>" +
+    "</div>";
+  }
+
+  function pageContacts() {
+    let list = contactViews();
+    if (state.contactSort === "recent") list.sort((a, b) => a.lastTs - b.lastTs);
+    else if (state.contactSort === "value") list.sort((a, b) => b.ltv - a.ltv);
+    else if (state.contactSort === "stale") list.sort((a, b) => b.lastTs - a.lastTs);
+
+    const flagPill = {
+      overdue: ["missed", "OWES"], "no-callback": ["missed", "NO CALLBACK"],
+      stale: ["waiting", "GOING COLD"], "stale-vip": ["missed", "TOP CUSTOMER, GOING QUIET"],
+      "new": ["new", "NEW"],
+    };
+    const sorts = [["recent", "Most recent"], ["value", "Highest value"], ["stale", "Going cold"]];
+
+    return '<div class="page-head"><h1>Contacts</h1><p>Service history is the thing owners reach for most — every job, call, and dollar per person.</p></div>' +
+      '<div class="panel">' +
+        '<div class="panel-head"><h2>' + list.length + ' contacts</h2>' +
+          '<button class="btn btn-primary btn-sm" data-action="new-contact">+ Add contact</button></div>' +
+        '<div class="chip-row">' + sorts.map(s =>
+          '<button class="chip ' + (state.contactSort === s[0] ? "active" : "") + '" data-action="contact-sort" data-sort="' + s[0] + '">' + s[1] + "</button>").join("") + "</div>" +
+        '<div class="tbl-scroll" style="margin-top:8px;"><table class="data"><thead><tr>' +
+          "<th>Name</th><th>Vehicle / account</th><th class='right'>Lifetime</th><th>Last contact</th><th class='right'>Action</th>" +
+        "</tr></thead><tbody>" +
+        list.map(c => {
+          const fp = c.flag ? flagPill[c.flag] : null;
+          return "<tr>" +
+            '<td><div class="who">' + esc(c.name) +
+              (c.vip ? ' <span class="pill" style="background:var(--brand-wash);color:var(--brand-deep);" title="Top 25% by lifetime value">&#9733; VIP</span>' : "") +
+              " " + (fp ? '<span class="pill ' + fp[0] + '" style="margin-left:4px;">' + fp[1] + "</span>" : "") + "</div>" +
+            '<div class="sub">' + esc(c.phone) + "</div></td>" +
+            "<td>" + esc(c.vehicle) + '<div class="sub">' + c.visits + " visit" + (c.visits === 1 ? "" : "s") + "</div></td>" +
+            '<td class="right tab" style="font-weight:600;">' + money(c.ltv) + "</td>" +
+            "<td>" + esc(c.last) + "</td>" +
+            '<td class="right"><div class="row-actions">' +
+              '<button class="btn btn-ghost btn-sm" data-action="view-contact" data-id="' + c.id + '">History</button>' +
+              '<button class="btn btn-primary btn-sm" data-action="log-for-contact" data-id="' + c.id + '">Log</button>' +
+            "</div></td></tr>";
+        }).join("") +
+        "</tbody></table></div>" +
+      "</div>";
+  }
+
+  function pageSettings() {
+    const s = state.settings;
+    const ss = state.serverSettings;
+    const accents = ["#0f7d72", "#c4291d", "#b08d4f", "#4f6b4a", "#256abf", "#e2637a"];
+
+    const thresholds = [
+      ["Stale enquiry", "No reply after this many days", "intakeStaleDays", 1, 14, " days"],
+      ["Stale job", "Job open longer than", "jobStaleDays", 1, 30, " days"],
+      ["Draft invoice reminder", "Nudge unsent drafts after", "draftInvoiceDays", 1, 14, " days"],
+      ["Uninvoiced job reminder", "Nudge unbilled finished work after", "uninvoicedJobDays", 1, 14, " days"],
+      ["Overdue grace period", "Days of slack before an invoice counts as late", "overdueGraceDays", 0, 14, " days"],
+    ];
+    const notifications = [
+      ["Missed call alerts", "Push the moment a call goes unanswered", "notifyMissedCall"],
+      ["Overdue invoice alerts", "Daily nudge while anything is past terms", "notifyOverdue"],
+      ["Daily digest email", "One 7am summary instead of live pings", "notifyDailyDigest"],
+      ["SMS to owner", "Text the owner, not just the dashboard", "notifySms"],
+      ["Auto-send reminders", "Chase overdue invoices without asking", "autoRemind"],
+    ];
+
+    return '<div class="page-head"><h1>Settings</h1><p>The white-label layer. Everything here is per-deployment — the engine underneath never changes.</p></div>' +
+      '<div class="note">Follow-up thresholds and notifications below are saved to the server immediately and re-evaluate the attention queue on Overview. Branding, vocabulary and modules stay environment variables — set once at deploy, changed by redeploying.</div>' +
+      '<div class="set-grid">' +
+        '<div class="stack">' +
+          '<div class="panel">' +
+            '<div class="panel-head"><h2>Follow-up thresholds</h2></div>' +
+            thresholds.map(t => thresholdRow(t[0], t[1], t[2], t[3], t[4], Number(ss[t[2]] ?? 0), t[5])).join("") +
+          "</div>" +
+
+          '<div class="panel">' +
+            '<div class="panel-head"><h2>Notifications</h2></div>' +
+            notifications.map(n => toggleRow(n[0], n[1], n[2], Boolean(ss[n[2]]))).join("") +
+          "</div>" +
+        "</div>" +
+
+        '<div class="stack">' +
+          '<div class="panel">' +
+            '<div class="panel-head"><h2>Branding &amp; vocabulary</h2><span class="sub">env vars — cosmetic preview only</span></div>' +
+            '<div class="panel-pad">' +
+              '<div class="field"><label>Accent colour</label><div class="swatch-row">' +
+                accents.map(a => '<button class="swatch ' + (s.accent === a ? "sel" : "") + '" style="background:' + a + '" data-action="set-accent" data-color="' + a + '" aria-label="Accent ' + a + '"></button>').join("") +
+              "</div></div>" +
+              '<div class="field-row">' +
+                '<div class="field"><label for="vocabJob">"Job" is called</label><input type="text" id="vocabJob" value="' + esc(s.vocabJob) + '" data-action="vocab" data-key="vocabJob"></div>' +
+                '<div class="field"><label for="vocabIntake">"Intake" is called</label><input type="text" id="vocabIntake" value="' + esc(s.vocabIntake) + '" data-action="vocab" data-key="vocabIntake"></div>' +
+              "</div>" +
+              '<div class="field"><label for="currency">Currency</label><select id="currency" data-action="vocab" data-key="currency">' +
+                ["USD ($)", "GBP (£)", "EUR (€)", "CAD ($)"].map(c => '<option' + (s.currency === c ? " selected" : "") + ">" + c + "</option>").join("") +
+              "</select></div>" +
+              '<button class="btn btn-primary" style="width:100%;justify-content:center;" data-action="save-branding">Save branding</button>' +
+            "</div>" +
+          "</div>" +
+
+          '<div class="panel">' +
+            '<div class="panel-head"><h2>Modules</h2><span class="sub">turn off what this client doesn’t use</span></div>' +
+            toggleRow("Contacts", "Customer records & history", "modContacts", s.modContacts) +
+            toggleRow("Invoices", "Billing & line items", "modInvoices", s.modInvoices) +
+            toggleRow("Jobs", "Work in progress tracking", "modJobs", s.modJobs) +
+            toggleRow("Payments", "Recording & reconciliation", "modPayments", s.modPayments) +
+          "</div>" +
+
+          '<div class="panel">' +
+            '<div class="panel-head"><h2>Danger zone</h2></div>' +
+            '<div class="panel-pad" style="display:grid;gap:9px;">' +
+              '<button class="btn btn-ghost" style="justify-content:center;" data-action="reset-demo">Reset demo data</button>' +
+              '<button class="btn btn-danger" style="justify-content:center;" data-action="wipe-tenant">Delete this deployment</button>' +
+            "</div>" +
+          "</div>" +
+        "</div>" +
+      "</div>";
+  }
+
+  function thresholdRow(title, desc, key, min, max, val, unit) {
+    return '<div class="set-row"><div class="info"><div class="t">' + title + '</div><div class="d">' + desc + "</div></div>" +
+      '<div class="thresh"><input type="range" min="' + min + '" max="' + max + '" value="' + val + '" data-action="threshold" data-key="' + key + '" aria-label="' + title + '">' +
+      '<span class="v tab" id="v-' + key + '">' + val + unit + "</span></div></div>";
+  }
+
+  function toggleRow(title, desc, key, on) {
+    return '<div class="set-row"><div class="info"><div class="t">' + title + '</div><div class="d">' + desc + "</div></div>" +
+      '<button class="toggle ' + (on ? "on" : "") + '" data-action="toggle" data-key="' + key + '" role="switch" aria-checked="' + on + '" aria-label="' + title + '"></button></div>';
+  }
+
+  // ============ render ============
+  function render() {
+    renderNav();
+    $("#tenantName").textContent = state.tenant;
+    $("#userTenant").textContent = state.tenant;
+    $("#userInitials").textContent = initials(state.tenant);
+    document.documentElement.style.setProperty("--brand", state.settings.accent);
+    if (state.loading) { $("#view").innerHTML = pageLoading(); return; }
+    if (state.loadError) { $("#view").innerHTML = pageError(); return; }
+    const map = { overview: pageOverview, inbox: pageInbox, payments: pagePayments, contacts: pageContacts, settings: pageSettings };
+    $("#view").innerHTML = (map[state.page] || pageOverview)();
+    window.scrollTo(0, 0);
+  }
+
+  // ============ modal ============
+  // A modal that opens and leaves keyboard/screen-reader focus behind on the
+  // page underneath is disorienting — focus moves to the first field, Tab
+  // stays trapped inside while it's open, and closing hands focus back to
+  // wherever the modal was opened from rather than losing it to the body.
+  let modalReturnFocus = null;
+  function openModal(title, bodyHTML, footHTML, wide) {
+    modalReturnFocus = document.activeElement;
+    $("#modalRoot").innerHTML =
+      '<div class="overlay" data-action="close-modal-bg"><div class="modal' + (wide ? " wide" : "") + '" role="dialog" aria-modal="true" aria-labelledby="modalTitle" tabindex="-1">' +
+        '<div class="modal-head"><h3 id="modalTitle">' + title + '</h3><button class="modal-close" data-action="close-modal" aria-label="Close">&times;</button></div>' +
+        '<div class="modal-body">' + bodyHTML + "</div>" +
+        (footHTML ? '<div class="modal-foot">' + footHTML + "</div>" : "") +
+      "</div></div>";
+    const modal = $("#modalRoot .modal");
+    const focusable = modal.querySelector("input, textarea, select, button:not(.modal-close)");
+    (focusable || modal).focus();
+  }
+  function closeModal() {
+    $("#modalRoot").innerHTML = "";
+    if (modalReturnFocus && document.contains(modalReturnFocus)) modalReturnFocus.focus();
+    modalReturnFocus = null;
+  }
+  function focusableInModal(modal) {
+    return Array.from(modal.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'))
+      .filter(el => !el.disabled && el.offsetParent !== null);
+  }
+  document.addEventListener("keydown", function (e) {
+    if (e.key !== "Tab") return;
+    const modal = $("#modalRoot .modal");
+    if (!modal) return;
+    const items = focusableInModal(modal);
+    if (!items.length) return;
+    const first = items[0], last = items[items.length - 1];
+    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+  });
+
+  // ============ data loading ============
+  async function refreshQueueAndProgress() {
+    const [queue, progress] = await Promise.all([api("GET", "/api/queue"), api("GET", "/api/queue/progress")]);
+    state.queue = queue;
+    state.progress = progress;
+  }
+  async function refreshMessages() { state.messages = await api("GET", "/api/messages"); }
+  async function refreshInvoices() { state.invoices = await api("GET", "/api/invoices"); }
+  async function refreshContacts() { state.contacts = await api("GET", "/api/contacts"); }
+  async function refreshSettings() { state.serverSettings = await api("GET", "/api/settings"); }
+  async function refreshScheduled() { state.scheduled = await api("GET", "/api/followups"); }
+  async function refreshSummary() { state.summary = await api("GET", "/api/dashboard/summary"); }
+  async function refreshAging() { state.aging = await api("GET", "/api/invoices/aging"); }
+
+  async function loadAll() {
+    state.loading = true; state.loadError = null; render();
+    try {
+      const [config, triggerOptions] = await Promise.all([
+        api("GET", "/api/config").catch(() => null),
+        api("GET", "/api/followups/options").catch(() => []),
+      ]);
+      state.config = config;
+      state.triggerOptions = triggerOptions;
+      await Promise.all([
+        refreshMessages(), refreshInvoices(), refreshContacts(), refreshSettings(),
+        refreshScheduled(), refreshSummary(), refreshAging(),
+        api("GET", "/api/dashboard/trend").then(r => { state.revenue = r; }),
+      ]);
+      await refreshQueueAndProgress();
+      state.loading = false;
+    } catch (e) {
+      state.loading = false;
+      state.loadError = e.message || String(e);
+    }
+    render();
+  }
+
+  // ============ actions ============
+  const actions = {
+    nav(el) { state.page = el.dataset.page; render(); },
+    noop() {},
+
+    range(el) {
+      state.range = +el.dataset.range;
+      document.querySelectorAll("#rangeSeg button").forEach(b => b.classList.toggle("active", b === el));
+      toast("Range set to " + state.range + " days", "", "info");
+    },
+
+    "goto-payments"() { state.page = "payments"; render(); },
+    "goto-inbox"() { state.page = "inbox"; render(); },
+    "goto-inbox-missed"() { state.page = "inbox"; state.inboxFilter = "missed"; render(); },
+
+    "explain-response"() {
+      openModal("Why response time is on this screen",
+        "<p style='margin-top:0;font-size:13px;line-height:1.6;'>One wasted hour a day works out to roughly <strong>260 hours a year</strong>. At a $150/hr billable rate that is about <strong>$39,000</strong> of revenue that never gets booked — most of it lost in the gap between a customer calling and someone calling back.</p>" +
+        "<p style='font-size:13px;line-height:1.6;'>That is why unreturned contacts sit in the attention queue above the revenue number, rather than buried in a report.</p>" +
+        "<p style='font-size:11.5px;color:var(--ink-muted);'>Benchmark from the 2026 state-of-small-field-service report.</p>",
+        '<button class="btn btn-primary" data-action="close-modal">Got it</button>');
+    },
+
+    "explain-month"(el) {
+      const r = state.revenue.find(x => x.month === el.dataset.month);
+      if (!r) return;
+      const gap = r.billed_cents - r.collected_cents;
+      openModal(r.month + " — billed vs. collected",
+        "<div class='cd-stats'>" +
+          "<div class='cd-stat'><div class='l'>Billed</div><div class='v tab'>" + money(r.billed_cents) + "</div></div>" +
+          "<div class='cd-stat'><div class='l'>Collected</div><div class='v tab'>" + money(r.collected_cents) + "</div></div>" +
+          "<div class='cd-stat'><div class='l'>Gap</div><div class='v tab' style='color:var(--critical-text)'>" + money(gap) + "</div></div>" +
+        "</div>" +
+        "<p style='font-size:13px;margin-bottom:0;'>" + money(gap) + " was invoiced in " + r.month + " and never landed. That gap is what the AR aging panel on Payments is tracking.</p>",
+        '<button class="btn btn-ghost" data-action="close-modal">Close</button>' +
+        '<button class="btn btn-primary" data-action="goto-payments-close">Open Payments</button>');
+    },
+    "goto-payments-close"() { closeModal(); state.page = "payments"; render(); },
+
+    // ---- inbox ----
+    "inbox-filter"(el) { state.inboxFilter = el.dataset.filter; render(); },
+    "mark-all-read"(el) {
+      return withPending(el, async () => {
+        const n = unreadCount();
+        await api("POST", "/api/messages/mark-all-read");
+        await refreshMessages();
+        render();
+        toast(n ? n + " marked read" : "Already all read", n ? "Inbox badge cleared." : "", n ? null : "info");
+      });
+    },
+    "mark-done"(el) {
+      return withPending(el, async () => {
+        const m = state.messages.find(x => x.id === +el.dataset.id);
+        const prevStatus = m ? m.status : "new";
+        const prevUnread = m ? Boolean(Number(m.unread)) : true;
+        await api("PATCH", "/api/messages/" + el.dataset.id, { status: "done", unread: false });
+        await refreshMessages();
+        render();
+        toast("Marked done", m ? msgWho(m) + " — cleared from the queue." : "", null, async () => {
+          await api("PATCH", "/api/messages/" + el.dataset.id, { status: prevStatus, unread: prevUnread });
+          await refreshMessages();
+          render();
+        });
+      });
+    },
+    "call-back"(el) {
+      const m = state.messages.find(x => x.id === +el.dataset.id);
+      if (!m) return;
+      openModal("Log a callback — " + esc(msgWho(m)),
+        "<p style='margin-top:0;font-size:13px;color:var(--ink-secondary);'>Calling " + esc((m.contact && m.contact.phone) || "") + ". Log the outcome so it leaves the attention queue.</p>" +
+        '<div class="field"><label for="cb-outcome">Outcome</label><select id="cb-outcome">' +
+          "<option>Reached — booked them in</option><option>Reached — quoted, will decide</option><option>No answer, left voicemail</option><option>Wrong number</option>" +
+        "</select></div>" +
+        '<div class="field"><label for="cb-note">Note</label><textarea id="cb-note" placeholder="Optional detail…"></textarea></div>',
+        '<button class="btn btn-ghost" data-action="close-modal">Cancel</button>' +
+        '<button class="btn btn-primary" data-action="confirm-callback" data-id="' + m.id + '">Log callback</button>');
+    },
+    "confirm-callback"(el) {
+      return withPending(el, async () => {
+        const m = state.messages.find(x => x.id === +el.dataset.id);
+        const outcome = $("#cb-outcome") ? $("#cb-outcome").value : "Logged";
+        await api("PATCH", "/api/messages/" + el.dataset.id, { status: "done", unread: false });
+        await refreshMessages();
+        closeModal(); render();
+        toast("Callback logged", (m ? msgWho(m) : "Contact") + " — " + outcome);
+      });
+    },
+    reply(el) {
+      const m = state.messages.find(x => x.id === +el.dataset.id);
+      if (!m) return;
+      const lastName = msgWho(m).split(" ").slice(-1)[0];
+      const templ = m.channel === "email"
+        ? "Hi " + lastName + ",\n\nThanks for reaching out — resending that now. Let me know if anything looks off.\n\n" + esc(state.tenant)
+        : "Hi " + lastName + " — yes, today works. Bring it by any time before 5 and we'll take a look.";
+      openModal("Reply to " + esc(msgWho(m)) + " · " + CHAN_LBL[m.channel],
+        "<div style='background:var(--page);border:1px solid var(--border);border-radius:8px;padding:11px 13px;font-size:12.5px;color:var(--ink-secondary);margin-bottom:13px;'>" + esc(msgSnippet(m)) + "</div>" +
+        '<div class="field"><label for="rp-body">Your reply</label><textarea id="rp-body" style="min-height:110px;">' + esc(templ) + "</textarea></div>" +
+        "<div style='font-size:11.5px;color:var(--ink-muted);'>Pre-filled from your saved template — edit before sending.</div>",
+        '<button class="btn btn-ghost" data-action="close-modal">Cancel</button>' +
+        '<button class="btn btn-primary" data-action="confirm-reply" data-id="' + m.id + '">Send ' + CHAN_LBL[m.channel].toLowerCase() + "</button>", true);
+    },
+    "confirm-reply"(el) {
+      return withPending(el, async () => {
+        const m = state.messages.find(x => x.id === +el.dataset.id);
+        const body = $("#rp-body") ? $("#rp-body").value.trim() : "";
+        if (!body) { toast("Nothing to send", "Write something first.", "err"); return; }
+        await api("POST", "/api/messages/" + el.dataset.id + "/reply", { body });
+        await refreshMessages();
+        closeModal(); render();
+        toast("Reply sent", (m ? msgWho(m) : "") + " — thread closed.");
+      });
+    },
+
+    // ---- capture ----
+    "open-capture"() {
+      openModal("Log activity", captureForm("md"),
+        '<button class="btn btn-ghost" data-action="close-modal">Cancel</button>', false);
+    },
+    "save-capture"(el) {
+      return withPending(el, async () => {
+        const p = el.dataset.prefix;
+        const nameEl = $("#" + p + "-name");
+        const name = nameEl ? nameEl.value.trim() : "";
+        const fieldWrap = $("#" + p + "-nameF");
+        if (!name) {
+          if (fieldWrap) fieldWrap.classList.add("invalid");
+          if (nameEl) nameEl.focus();
+          toast("Name required", "Every logged activity files against a contact.", "err");
+          return;
+        }
+        if (fieldWrap) fieldWrap.classList.remove("invalid");
+        const channel = $("#" + p + "-chan") ? $("#" + p + "-chan").value : "call";
+        const phone = $("#" + p + "-phone") ? $("#" + p + "-phone").value.trim() : "";
+        const note = $("#" + p + "-note") ? $("#" + p + "-note").value.trim() : "";
+
+        await api("POST", "/api/messages", { name, phone, channel, note });
+        await Promise.all([refreshMessages(), refreshContacts()]);
+        closeModal(); render();
+        toast("Logged to inbox", name + " · " + CHAN_LBL[channel] + (note ? " — note saved" : ""));
+      });
+    },
+
+    // ---- invoices ----
+    "invoice-filter"(el) { state.invoiceFilter = el.dataset.filter; render(); },
+    "remind-invoice"(el) {
+      const iv = invoiceView(state.invoices.find(x => x.id === +el.dataset.id));
+      if (!iv) return;
+      const tone = iv.days > 60 ? "firm" : "gentle";
+      openModal("Payment reminder — " + iv.num,
+        "<p style='margin-top:0;font-size:13px;color:var(--ink-secondary);'>" + esc(iv.who) + " · " + money(iv.amount_cents) + " · <strong>" + iv.days + " days overdue</strong></p>" +
+        '<div class="field"><label for="rm-tone">Tone</label><select id="rm-tone">' +
+          '<option value="gentle"' + (tone === "gentle" ? " selected" : "") + ">Gentle — good payer, first nudge</option>" +
+          '<option value="firm"' + (tone === "firm" ? " selected" : "") + ">Firm — repeat late, past 60 days</option>" +
+          '<option value="final">Final notice — before collections</option>' +
+        "</select></div>" +
+        '<div class="field"><label for="rm-body">Message</label><textarea id="rm-body" style="min-height:100px;">Hi ' + esc(iv.who.split(" ").slice(-1)[0]) +
+          ", quick note that invoice " + iv.num + " for " + money(iv.amount_cents) + " is now " + iv.days + " days past due. Happy to take payment over the phone if that's easier.</textarea></div>" +
+        "<div style='font-size:11.5px;color:var(--ink-muted);'>Tone auto-selected from this customer's payment history.</div>",
+        '<button class="btn btn-ghost" data-action="close-modal">Cancel</button>' +
+        '<button class="btn btn-primary" data-action="confirm-remind" data-id="' + iv.id + '">Send reminder</button>', true);
+    },
+    "confirm-remind"(el) {
+      return withPending(el, async () => {
+        const iv = invoiceView(state.invoices.find(x => x.id === +el.dataset.id));
+        const tone = $("#rm-tone") ? $("#rm-tone").value : "gentle";
+        await api("POST", "/api/invoices/" + el.dataset.id + "/send", { tone });
+        await Promise.all([refreshInvoices(), refreshQueueAndProgress(), refreshSummary(), refreshAging()]);
+        closeModal(); render();
+        toast("Reminder sent", iv ? iv.who + " — " + iv.num + " moved to awaiting payment." : "");
+      });
+    },
+    "chase-estimate"(el) {
+      return withPending(el, async () => {
+        const iv = invoiceView(state.invoices.find(x => x.id === +el.dataset.id));
+        await api("POST", "/api/invoices/" + el.dataset.id + "/send", { tone: "gentle" });
+        await Promise.all([refreshInvoices(), refreshQueueAndProgress()]);
+        render();
+        toast("Follow-up sent", iv ? iv.who + " — " + iv.num + " nudged." : "");
+      });
+    },
+    "send-invoice"(el) {
+      return withPending(el, async () => {
+        const iv = invoiceView(state.invoices.find(x => x.id === +el.dataset.id));
+        await api("POST", "/api/invoices/" + el.dataset.id + "/send", { tone: "gentle" });
+        await Promise.all([refreshInvoices(), refreshQueueAndProgress(), refreshSummary()]);
+        render();
+        toast("Invoice sent", iv ? iv.num + " · " + money(iv.amount_cents) + " to " + iv.who : "");
+      });
+    },
+    "mark-paid"(el) {
+      const iv = invoiceView(state.invoices.find(x => x.id === +el.dataset.id));
+      if (!iv) return;
+      openModal("Record payment — " + iv.num,
+        "<p style='margin-top:0;font-size:13px;color:var(--ink-secondary);'>" + esc(iv.who) + " · " + esc(iv.desc) + "</p>" +
+        '<div class="field-row">' +
+          '<div class="field"><label for="pay-amt">Amount</label><input type="text" id="pay-amt" value="' + (iv.balance_cents / 100).toFixed(2) + '"></div>' +
+          '<div class="field"><label for="pay-method">Method</label><select id="pay-method"><option>Card</option><option>Cash</option><option>Cheque</option><option>Bank transfer</option></select></div>' +
+        "</div>",
+        '<button class="btn btn-ghost" data-action="close-modal">Cancel</button>' +
+        '<button class="btn btn-primary" data-action="confirm-paid" data-id="' + iv.id + '">Record payment</button>');
+    },
+    "confirm-paid"(el) {
+      return withPending(el, async () => {
+        const iv = invoiceView(state.invoices.find(x => x.id === +el.dataset.id));
+        const method = $("#pay-method") ? $("#pay-method").value : "Card";
+        const amtRaw = $("#pay-amt") ? $("#pay-amt").value.replace(/[^0-9.]/g, "") : "";
+        await api("POST", "/api/invoices/" + el.dataset.id + "/payments", { amount: amtRaw || undefined, method });
+        await Promise.all([refreshInvoices(), refreshContacts(), refreshQueueAndProgress(), refreshSummary(), refreshAging()]);
+        closeModal(); render();
+        toast("Payment recorded", iv ? money(iv.balance_cents) + " from " + iv.who + " · " + method : "");
+      });
+    },
+    "remind-all"() {
+      const od = overdueViews();
+      if (!od.length) { toast("Nothing overdue", "Every invoice is current.", "info"); return; }
+      openModal("Send " + od.length + " reminders",
+        "<p style='margin-top:0;font-size:13px;'>This will send a payment reminder to each of these, tone matched to their history:</p>" +
+        "<div style='display:grid;gap:7px;'>" + od.map(i =>
+          "<div style='display:flex;justify-content:space-between;background:var(--page);border:1px solid var(--border);border-radius:7px;padding:9px 12px;font-size:12.5px;'>" +
+          "<span>" + esc(i.who) + " · " + esc(i.num) + "</span><span class='tab' style='font-weight:600;'>" + money(i.amount_cents) + " · " + i.days + "d</span></div>").join("") + "</div>",
+        '<button class="btn btn-ghost" data-action="close-modal">Cancel</button>' +
+        '<button class="btn btn-primary" data-action="confirm-remind-all">Send all ' + od.length + "</button>", true);
+    },
+    "confirm-remind-all"(el) {
+      return withPending(el, async () => {
+        const od = overdueViews();
+        const total = od.reduce((s, i) => s + i.amount_cents, 0);
+        const res = await api("POST", "/api/invoices/remind-overdue");
+        await Promise.all([refreshInvoices(), refreshQueueAndProgress(), refreshAging()]);
+        closeModal(); render();
+        toast((res.reminded || od.length) + " reminders sent", money(total) + " now chased.");
+      });
+    },
+    "export-csv"(el) {
+      return withPending(el, async () => {
+        const csv = await api("GET", "/api/invoices/export.csv");
+        const rowCount = csv.trim().split("\n").length - 1;
+        openModal("Statement export",
+          "<p style='margin-top:0;font-size:13px;color:var(--ink-secondary);'>" + rowCount + " invoices, " + money(outstanding_cents()) + " outstanding. Preview:</p>" +
+          "<pre style='background:var(--page);border:1px solid var(--border);border-radius:8px;padding:12px;font-size:11px;overflow-x:auto;max-height:240px;margin:0;'>" + esc(csv) + "</pre>",
+          '<button class="btn btn-primary" data-action="close-modal">Done</button>', true);
+        toast("Statement generated", rowCount + " rows ready.", "info");
+      });
+    },
+    "new-invoice"() {
+      openModal("New invoice",
+        '<div class="field" id="ni-whoF"><label for="ni-who">Customer</label><select id="ni-who">' +
+          state.contacts.map(c => '<option value="' + c.id + '">' + esc(c.name) + "</option>").join("") + "</select></div>" +
+        '<div class="field"><label for="ni-desc">Description</label><input type="text" id="ni-desc" placeholder="e.g. Brake pads & rotors, rear axle"></div>' +
+        '<div class="field" id="ni-amtF"><label for="ni-amt">Amount</label><input type="text" id="ni-amt" placeholder="340">' +
+        '<div class="field-err">Enter a number greater than zero.</div></div>',
+        '<button class="btn btn-ghost" data-action="close-modal">Cancel</button>' +
+        '<button class="btn btn-ghost" data-action="create-invoice" data-mode="draft">Save draft</button>' +
+        '<button class="btn btn-primary" data-action="create-invoice" data-mode="send">Create &amp; send</button>');
+    },
+    "create-invoice"(el) {
+      return withPending(el, async () => {
+        const whoEl = $("#ni-who");
+        const contactId = whoEl ? whoEl.value : "";
+        const desc = $("#ni-desc") ? $("#ni-desc").value.trim() : "";
+        const raw = $("#ni-amt") ? $("#ni-amt").value.replace(/[^0-9.]/g, "") : "";
+        const amt = parseFloat(raw);
+        if (!amt || amt <= 0) {
+          const f = $("#ni-amtF"); if (f) f.classList.add("invalid");
+          toast("Amount required", "An invoice needs a number on it.", "err");
+          return;
+        }
+        const mode = el.dataset.mode;
+        const contact = state.contacts.find(c => String(c.id) === String(contactId));
+        const created = await api("POST", "/api/invoices", {
+          contact_id: contactId || null,
+          status: mode === "send" ? "Sent" : "Draft",
+          items: [{ description: desc || "Service", qty: 1, unit_price: amt }],
+        });
+        await Promise.all([refreshInvoices(), refreshQueueAndProgress(), refreshSummary()]);
+        closeModal(); render();
+        toast(mode === "send" ? "Invoice sent" : "Draft saved", created.number + " · " + money(Math.round(amt * 100)) + " · " + (contact ? contact.name : ""));
+      });
+    },
+
+    // ---- contacts ----
+    "contact-sort"(el) { state.contactSort = el.dataset.sort; render(); },
+    "view-contact"(el) {
+      return withPending(el, async () => {
+        const full = await api("GET", "/api/contacts/" + el.dataset.id);
+        const theirs = (full.invoices || []).filter(i => i.status !== "Void");
+        const msgs = full.messages || [];
+        const owed = theirs.reduce((s, i) => s + 0, 0); // computed below from live invoice list for consistency
+        const liveViews = invoiceViews().filter(iv => String(iv.raw.contact_id) === String(full.id));
+        const owedNow = liveViews.filter(iv => iv.status === "overdue" || iv.status === "sent").reduce((s, iv) => s + iv.balance_cents, 0);
+        openModal(esc(full.name),
+          '<div class="contact-detail">' +
+            '<div class="cd-head"><div class="cd-avatar">' + initials(full.name) + "</div>" +
+              "<div><div style='font-weight:700;font-size:15px;'>" + esc(full.name) + "</div>" +
+              "<div style='font-size:12.5px;color:var(--ink-muted);'>" + esc(full.phone || "—") + " · " + esc(full.email || "—") + "</div>" +
+              "<div style='font-size:12.5px;color:var(--ink-secondary);'>" + esc(full.notes || "Not recorded") + "</div></div></div>" +
+            '<div class="cd-stats">' +
+              "<div class='cd-stat'><div class='l'>Lifetime</div><div class='v tab'>" + money(full.lifetime_paid_cents || 0) + "</div></div>" +
+              "<div class='cd-stat'><div class='l'>Invoices</div><div class='v tab'>" + theirs.length + "</div></div>" +
+              "<div class='cd-stat'><div class='l'>Owes now</div><div class='v tab' style='" + (owedNow ? "color:var(--critical-text)" : "") + "'>" + money(owedNow) + "</div></div>" +
+            "</div>" +
+            "<div><div style='font-size:11px;font-weight:700;color:var(--ink-muted);letter-spacing:0.04em;text-transform:uppercase;margin-bottom:6px;'>Service history</div>" +
+            '<div class="timeline">' +
+              (theirs.length || msgs.length
+                ? msgs.map(m => '<div class="tl-item"><span class="tl-dot"></span><div>' + esc(msgSnippet(m)) + '<div class="when">' + CHAN_LBL[m.channel] + " · " + timeAgo(m.occurred_at) + "</div></div></div>").join("") +
+                  theirs.map(i => '<div class="tl-item"><span class="tl-dot" style="background:var(--seq-500)"></span><div>' + esc((i.items || []).map(it => it.description).join(", ") || "Service") + " — " + money(i.totals ? i.totals.total : 0) +
+                    '<div class="when">' + esc(i.number) + " · " + i.status + " · " + esc(i.issue_date || "—") + "</div></div></div>").join("")
+                : '<div class="empty-state">No history recorded yet.</div>') +
+            "</div></div>" +
+          "</div>",
+          '<button class="btn btn-ghost" data-action="close-modal">Close</button>' +
+          '<button class="btn btn-primary" data-action="log-for-contact" data-id="' + full.id + '">Log activity</button>', true);
+      });
+    },
+    "log-for-contact"(el) {
+      const c = state.contacts.find(x => x.id === +el.dataset.id);
+      closeModal();
+      openModal("Log activity — " + (c ? esc(c.name) : ""), captureForm("md"),
+        '<button class="btn btn-ghost" data-action="close-modal">Cancel</button>');
+      if (c) {
+        const n = $("#md-name"); if (n) n.value = c.name;
+        const p = $("#md-phone"); if (p) p.value = c.phone || "";
+      }
+    },
+    "new-contact"() {
+      openModal("Add contact",
+        '<div class="field" id="nc-nameF"><label for="nc-name">Name</label><input type="text" id="nc-name" placeholder="e.g. Sam Barrett">' +
+        '<div class="field-err">A contact needs a name.</div></div>' +
+        '<div class="field-row">' +
+          '<div class="field"><label for="nc-phone">Phone</label><input type="text" id="nc-phone" placeholder="(678) 555-0100"></div>' +
+          '<div class="field"><label for="nc-email">Email</label><input type="text" id="nc-email" placeholder="name@example.com"></div>' +
+        "</div>" +
+        '<div class="field"><label for="nc-vehicle">Vehicle / account</label><input type="text" id="nc-vehicle" placeholder="2019 Honda Civic"></div>',
+        '<button class="btn btn-ghost" data-action="close-modal">Cancel</button>' +
+        '<button class="btn btn-primary" data-action="create-contact">Add contact</button>');
+    },
+    "create-contact"(el) {
+      return withPending(el, async () => {
+        const name = $("#nc-name") ? $("#nc-name").value.trim() : "";
+        if (!name) {
+          const f = $("#nc-nameF"); if (f) f.classList.add("invalid");
+          toast("Name required", "", "err"); return;
+        }
+        const phone = ($("#nc-phone") && $("#nc-phone").value.trim()) || "";
+        const email = ($("#nc-email") && $("#nc-email").value.trim()) || "";
+        const vehicle = ($("#nc-vehicle") && $("#nc-vehicle").value.trim()) || "";
+        await api("POST", "/api/contacts", { name, phone, email, notes: vehicle || null });
+        await refreshContacts();
+        closeModal(); render();
+        toast("Contact added", name + " is now in your list.");
+      });
+    },
+
+    // ---- settings ----
+    threshold(el) {
+      const key = el.dataset.key;
+      const lbl = $("#v-" + key);
+      if (lbl) lbl.textContent = el.value + " days";
+    },
+    "threshold-commit"(el) {
+      return withPending(el, async () => {
+        const key = el.dataset.key;
+        state.serverSettings[key] = +el.value;
+        await api("PATCH", "/api/settings", { [key]: +el.value });
+        await refreshQueueAndProgress();
+        toast("Threshold saved", "Attention queue re-evaluated.", "info");
+      });
+    },
+    toggle(el) {
+      return withPending(el, async () => {
+        const key = el.dataset.key;
+        // Modules and branding-adjacent toggles are cosmetic/env-var-only.
+        if (key in state.settings) {
+          state.settings[key] = !state.settings[key];
+          el.classList.toggle("on", state.settings[key]);
+          el.setAttribute("aria-checked", String(state.settings[key]));
+          toast(state.settings[key] ? "Turned on" : "Turned off", el.getAttribute("aria-label"), "info");
+          return;
+        }
+        const next = !state.serverSettings[key];
+        state.serverSettings[key] = next;
+        el.classList.toggle("on", next);
+        el.setAttribute("aria-checked", String(next));
+        await api("PATCH", "/api/settings", { [key]: next });
+        toast(next ? "Turned on" : "Turned off", el.getAttribute("aria-label"), "info");
+      });
+    },
+    "set-accent"(el) {
+      state.settings.accent = el.dataset.color;
+      render();
+      toast("Accent updated", "Preview only — set BRAND_PRIMARY to make it permanent.", "info");
+    },
+    vocab(el) { state.settings[el.dataset.key] = el.value; },
+    "save-branding"() {
+      toast("Preview only", "Branding is set via environment variables at deploy time.", "info");
+    },
+    "reset-demo"() {
+      openModal("Reload from the server?",
+        "<p style='margin-top:0;font-size:13px;'>This re-fetches everything from the server, discarding any unsaved local preview (accent colour, vocabulary).</p>",
+        '<button class="btn btn-ghost" data-action="close-modal">Cancel</button>' +
+        '<button class="btn btn-danger" data-action="confirm-reset">Reload</button>');
+    },
+    "confirm-reset"() { closeModal(); location.reload(); },
+    "wipe-tenant"() {
+      openModal("Delete this deployment?",
+        "<p style='margin-top:0;font-size:13px;'>This would tear down <strong>" + esc(state.tenant) + "</strong> — its database, its domain, and every record in it. In the real product this requires typing the business name to confirm.</p>" +
+        "<div class='field'><label for='wipe-confirm'>Type the business name</label><input type='text' id='wipe-confirm' placeholder='" + esc(state.tenant) + "'></div>",
+        '<button class="btn btn-ghost" data-action="close-modal">Cancel</button>' +
+        '<button class="btn btn-danger" data-action="confirm-wipe">Delete permanently</button>');
+    },
+    "confirm-wipe"() {
+      const v = $("#wipe-confirm") ? $("#wipe-confirm").value.trim() : "";
+      if (v !== state.tenant) { toast("Name doesn't match", "Type the business name exactly to confirm.", "err"); return; }
+      closeModal();
+      toast("Deletion blocked", "This is a demo control — nothing was deleted.", "info");
+    },
+
+    // ---- tenant (cosmetic preview only) ----
+    "switch-tenant"() {
+      openModal("Switch deployment",
+        "<p style='margin-top:0;font-size:13px;color:var(--ink-secondary);'>Same engine, different client. Watch the vocabulary and accent change. This is a visual preview only.</p>" +
+        "<div style='display:grid;gap:8px;'>" + TENANTS.map(t =>
+          "<button class='btn btn-ghost' style='justify-content:flex-start;gap:11px;' data-action='pick-tenant' data-key='" + t.key + "'>" +
+          "<span style='width:11px;height:11px;border-radius:3px;background:" + t.accent + "'></span>" + esc(t.name) +
+          (t.key === state.tenantKey ? "<span style='margin-left:auto;font-size:11px;color:var(--ink-muted);'>current</span>" : "") + "</button>").join("") + "</div>",
+        '<button class="btn btn-ghost" data-action="close-modal">Cancel</button>');
+    },
+    "pick-tenant"(el) {
+      const t = TENANTS.find(x => x.key === el.dataset.key);
+      if (!t) return;
+      state.tenant = t.name; state.tenantKey = t.key;
+      state.settings.accent = t.accent;
+      state.settings.vocabJob = t.vocabJob;
+      state.settings.vocabIntake = t.vocabIntake;
+      closeModal(); render();
+      toast("Now viewing " + t.name, '"' + t.vocabJob + '" / "' + t.vocabIntake + '" · re-themed.', "info");
+    },
+
+    // --- implementation intentions: when-then commitment ---
+    "schedule-item"(el) {
+      const kind = el.dataset.kind, id = +el.dataset.id, label = el.dataset.label || "this";
+      const options = state.triggerOptions.length ? state.triggerOptions : ["Later today", "Tomorrow morning", "Monday morning", "Next week"];
+      openModal("When will you handle “" + esc(label) + "”?",
+        "<p style='margin-top:0;font-size:13px;color:var(--ink-secondary);'>Pick the moment, not just the task. Deciding the trigger in advance is what makes it actually happen.</p>" +
+        options.map((opt, i) =>
+          '<button class="trigger-opt' + (i === 0 ? " sel" : "") + '" data-action="pick-trigger" data-when="' + esc(opt) + '">' +
+            '<span class="to-when">' + esc(opt) + '</span><span class="to-then">— ' + esc(TRIGGER_THEN[opt] || "") + "</span></button>").join("") +
+        '<input type="hidden" id="sch-when" value="' + esc(options[0]) + '">' +
+        '<input type="hidden" id="sch-what" value="' + esc(label) + '">' +
+        '<input type="hidden" id="sch-kind" value="' + esc(kind) + '">' +
+        '<input type="hidden" id="sch-id" value="' + id + '">',
+        '<button class="btn btn-ghost" data-action="close-modal">Cancel</button>' +
+        '<button class="btn btn-primary" data-action="confirm-schedule">Commit to it</button>');
+    },
+    "pick-trigger"(el) {
+      document.querySelectorAll(".trigger-opt").forEach(b => b.classList.remove("sel"));
+      el.classList.add("sel");
+      const f = $("#sch-when"); if (f) f.value = el.dataset.when;
+    },
+    "confirm-schedule"(el) {
+      return withPending(el, async () => {
+        const when = $("#sch-when") ? $("#sch-when").value : "Later today";
+        const what = $("#sch-what") ? $("#sch-what").value : "this";
+        const kind = $("#sch-kind") ? $("#sch-kind").value : "";
+        const id = $("#sch-id") ? +$("#sch-id").value : 0;
+        await api("POST", "/api/followups", { trigger_label: when, target_kind: kind, target_id: id || null, label: "I will " + what });
+        await refreshScheduled();
+        closeModal(); render();
+        toast("Committed", when + " — " + what + ".");
+      });
+    },
+    "do-scheduled"(el) {
+      return withPending(el, async () => {
+        const s = state.scheduled.find(x => x.id === +el.dataset.id);
+        if (!s) return;
+        await api("POST", "/api/followups/" + s.id + "/done");
+        await refreshScheduled();
+        const fake = { dataset: { id: String(s.target_id) } };
+        if (actions[s.target_kind]) { await actions[s.target_kind](fake); }
+        else { render(); toast("Done", s.label); }
+      });
+    },
+    "drop-scheduled"(el) {
+      // Deletion is deferred until the undo window actually passes, rather
+      // than fired immediately and undone by recreating a row — recreating
+      // would mint a new id and re-resolve "Later today" against a
+      // different clock, which isn't really the same commitment anymore.
+      const id = +el.dataset.id;
+      const s = state.scheduled.find(x => x.id === id);
+      if (!s) return;
+      state.scheduled = state.scheduled.filter(x => x.id !== id);
+      render();
+      const timer = setTimeout(() => {
+        api("DELETE", "/api/followups/" + id).catch(() => {});
+      }, 6000);
+      toast("Dropped", s.label, "info", () => {
+        clearTimeout(timer);
+        state.scheduled.push(s);
+        state.scheduled.sort((a, b) => a.trigger_at < b.trigger_at ? -1 : 1);
+        render();
+      });
+    },
+    "view-queue-item"(el) {
+      const it = state.queue[+el.dataset.idx];
+      if (!it) return;
+      openModal(esc(it.title),
+        "<p style='margin-top:0;font-size:13px;color:var(--ink-secondary);'>" + esc(it.detail) + "</p>" +
+        (it.contact ? "<p style='font-size:13px;'>" + esc(it.contact.name || it.contact.company || "") + (it.contact.phone ? " · " + esc(it.contact.phone) : "") + "</p>" : "") +
+        (it.value_cents ? "<p style='font-size:13px;font-weight:600;'>" + money(it.value_cents) + "</p>" : ""),
+        '<button class="btn btn-primary" data-action="close-modal">Close</button>');
+    },
+
+    // --- command palette ---
+    "open-cmdk"() { openCmdk(); },
+    "cmdk-bg"(el, e) { if (e.target === el) closeCmdk(); },
+    "cmdk-run"(el) { runCmd(+el.dataset.idx); },
+    "show-shortcuts"() {
+      openModal("Keyboard shortcuts",
+        "<div style='display:grid;gap:9px;font-size:13px;'>" +
+        [["⌘ K / Ctrl K", "Command palette — jump anywhere, run anything"],
+         ["G then O / I / P / C / S", "Go to Overview, Inbox, Payments, Contacts, Settings"],
+         ["N", "Log activity"],
+         ["/", "Focus search"],
+         ["?", "This list"],
+         ["Esc", "Close anything open"]].map(r =>
+          "<div style='display:flex;justify-content:space-between;gap:14px;align-items:center;'>" +
+          "<span class='kbd'>" + r[0] + "</span><span style='color:var(--ink-secondary);text-align:right;'>" + r[1] + "</span></div>").join("") +
+        "</div>",
+        '<button class="btn btn-primary" data-action="close-modal">Got it</button>');
+    },
+
+    "close-modal"() { closeModal(); },
+    "close-modal-bg"(el, e) { if (e.target === el) closeModal(); },
+    "retry-load"() { loadAll(); },
+  };
+
+  // ============ events ============
+  document.addEventListener("click", function (e) {
+    const el = e.target.closest("[data-action]");
+    if (!el) return;
+    const fn = actions[el.dataset.action];
+    if (fn) { e.preventDefault(); fn(el, e); }
+  });
+
+  document.addEventListener("input", function (e) {
+    const el = e.target.closest("[data-action]");
+    if (el && el.dataset.action === "threshold") actions.threshold(el);
+    if (el && el.dataset.action === "vocab") actions.vocab(el);
+    if (e.target.id === "search") doSearch(e.target.value);
+  });
+
+  document.addEventListener("change", function (e) {
+    const el = e.target.closest("[data-action]");
+    if (el && el.dataset.action === "threshold") actions["threshold-commit"](el);
+    if (el && el.dataset.action === "vocab") actions.vocab(el);
+  });
+
+  let goPending = false, goTimer = null;
+  const GO_MAP = { o: "overview", i: "inbox", p: "payments", c: "contacts", s: "settings" };
+
+  document.addEventListener("keydown", function (e) {
+    const k = e.key;
+
+    if (state.cmdk.open) {
+      if (k === "Escape") { e.preventDefault(); closeCmdk(); return; }
+      const list = filterCommands(state.cmdk.q);
+      if (k === "ArrowDown") { e.preventDefault(); state.cmdk.idx = Math.min(state.cmdk.idx + 1, list.length - 1); renderCmdk(); return; }
+      if (k === "ArrowUp") { e.preventDefault(); state.cmdk.idx = Math.max(state.cmdk.idx - 1, 0); renderCmdk(); return; }
+      if (k === "Enter") { e.preventDefault(); runCmd(state.cmdk.idx); return; }
+      return;
+    }
+
+    if ((e.metaKey || e.ctrlKey) && (k === "k" || k === "K")) { e.preventDefault(); openCmdk(); return; }
+
+    if (k === "Escape") { closeModal(); hideSearch(); goPending = false; return; }
+
+    const t = e.target;
+    const typing = t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable);
+    if (typing || e.metaKey || e.ctrlKey || e.altKey) return;
+    if ($("#modalRoot").innerHTML) return;
+
+    if (goPending && GO_MAP[k.toLowerCase()]) {
+      e.preventDefault(); goPending = false; clearTimeout(goTimer);
+      state.page = GO_MAP[k.toLowerCase()]; render();
+      return;
+    }
+    goPending = false;
+
+    if (k === "g" || k === "G") {
+      goPending = true;
+      clearTimeout(goTimer);
+      goTimer = setTimeout(() => { goPending = false; }, 1200);
+      return;
+    }
+    if (k === "n" || k === "N") { e.preventDefault(); actions["open-capture"](); return; }
+    if (k === "/") { e.preventDefault(); const s = $("#search"); if (s) s.focus(); return; }
+    if (k === "?") { e.preventDefault(); actions["show-shortcuts"](); return; }
+  });
+
+  document.addEventListener("input", function (e) {
+    if (e.target && e.target.id === "cmdkInput") {
+      state.cmdk.q = e.target.value; state.cmdk.idx = 0; renderCmdk();
+    }
+  });
+
+  // --- command palette ---
+  function buildCommands() {
+    const c = [];
+    PAGES.forEach(p => c.push({ id: "go:" + p.key, sec: "Go to", ico: p.ico, label: p.label, hint: "G " + p.key[0].toUpperCase(), run: () => { state.page = p.key; render(); } }));
+    c.push({ id: "act:capture", sec: "Actions", ico: "&#10133;", label: "Log activity", hint: "N", run: () => actions["open-capture"]() });
+    c.push({ id: "act:new-invoice", sec: "Actions", ico: "&#129534;", label: "New invoice", hint: "", run: () => { state.page = "payments"; render(); actions["new-invoice"](); } });
+    c.push({ id: "act:new-contact", sec: "Actions", ico: "&#128100;", label: "Add contact", hint: "", run: () => { state.page = "contacts"; render(); actions["new-contact"](); } });
+    c.push({ id: "act:remind-all", sec: "Actions", ico: "&#128233;", label: "Remind all overdue", hint: "", run: () => { state.page = "payments"; render(); actions["remind-all"](); } });
+    c.push({ id: "act:mark-all-read", sec: "Actions", ico: "&#9989;", label: "Mark inbox all read", hint: "", run: () => actions["mark-all-read"]() });
+    c.push({ id: "act:export-csv", sec: "Actions", ico: "&#128190;", label: "Export statement (CSV)", hint: "", run: () => actions["export-csv"]() });
+    c.push({ id: "act:switch-tenant", sec: "Actions", ico: "&#8646;", label: "Switch deployment", hint: "", run: () => actions["switch-tenant"]() });
+    c.push({ id: "act:shortcuts", sec: "Actions", ico: "&#9000;", label: "Keyboard shortcuts", hint: "?", run: () => actions["show-shortcuts"]() });
+    state.contacts.slice(0, 40).forEach(ct => c.push({
+      id: "contact:" + ct.id, sec: "Contacts", ico: "&#128100;", label: ct.name, hint: ct.notes || "",
+      run: () => { state.page = "contacts"; render(); actions["view-contact"]({ dataset: { id: String(ct.id) } }); }
+    }));
+    invoiceViews().forEach(iv => c.push({
+      id: "invoice:" + iv.id, sec: "Invoices", ico: "&#129534;", label: iv.num + " — " + iv.who, hint: money(iv.amount_cents) + " · " + iv.status,
+      run: () => { state.page = "payments"; state.invoiceFilter = "all"; render(); }
+    }));
+    return c;
+  }
+
+  // Recognition over recall: tools like Linear and Raycast surface your
+  // recently-run commands first when the palette opens with no query, since
+  // people re-run the same handful of things far more than they explore —
+  // finding "the thing I did an hour ago" by scanning beats retyping it.
+  const RECENTS_KEY = "opsdesk_switchboard_recent_cmds";
+  function loadRecentCmdIds() {
+    try { return JSON.parse(localStorage.getItem(RECENTS_KEY) || "[]"); }
+    catch { return []; }
+  }
+  function recordRecentCmd(id) {
+    try {
+      const ids = loadRecentCmdIds().filter(x => x !== id);
+      ids.unshift(id);
+      localStorage.setItem(RECENTS_KEY, JSON.stringify(ids.slice(0, 5)));
+    } catch { /* private browsing or storage disabled — recents just won't persist */ }
+  }
+
+  function filterCommands(q) {
+    const all = buildCommands();
+    q = (q || "").trim().toLowerCase();
+    if (!q) {
+      const byId = new Map(all.map(c => [c.id, c]));
+      const recentIds = loadRecentCmdIds().filter(id => byId.has(id));
+      const recents = recentIds.map(id => Object.assign({}, byId.get(id), { sec: "Recent" }));
+      const rest = all.filter(x => x.sec !== "Contacts" && x.sec !== "Invoices" && !recentIds.includes(x.id));
+      return recents.concat(rest);
+    }
+    return all.filter(x => (x.label + " " + x.sec + " " + (x.hint || "")).toLowerCase().includes(q)).slice(0, 24);
+  }
+
+  function openCmdk() {
+    state.cmdk.open = true; state.cmdk.q = ""; state.cmdk.idx = 0;
+    renderCmdk();
+    const i = $("#cmdkInput"); if (i) i.focus();
+  }
+  function closeCmdk() {
+    state.cmdk.open = false;
+    const r = $("#cmdkRoot"); if (r) r.innerHTML = "";
+  }
+  function renderCmdk() {
+    const list = filterCommands(state.cmdk.q);
+    if (state.cmdk.idx >= list.length) state.cmdk.idx = Math.max(0, list.length - 1);
+    let out = "", lastSec = "";
+    list.forEach((cmd, i) => {
+      if (cmd.sec !== lastSec) { out += '<div class="cmdk-sec">' + cmd.sec + "</div>"; lastSec = cmd.sec; }
+      out += '<div class="cmdk-item' + (i === state.cmdk.idx ? " on" : "") + '" data-action="cmdk-run" data-idx="' + i + '">' +
+        '<span class="ci-ico">' + cmd.ico + '</span><span class="ci-label">' + esc(cmd.label) + "</span>" +
+        (cmd.hint ? '<span class="ci-hint">' + esc(cmd.hint) + "</span>" : "") + "</div>";
+    });
+    $("#cmdkRoot").innerHTML =
+      '<div class="cmdk-overlay" data-action="cmdk-bg"><div class="cmdk" role="dialog" aria-modal="true" aria-label="Command palette">' +
+        '<input class="cmdk-input" id="cmdkInput" placeholder="Type a command, contact, or invoice…" autocomplete="off" value="' + esc(state.cmdk.q) + '">' +
+        '<div class="cmdk-list">' + (list.length ? out : '<div class="cmdk-empty">Nothing matches that.</div>') + "</div>" +
+        '<div class="cmdk-foot"><span><span class="kbd">↑↓</span> navigate</span><span><span class="kbd">↵</span> run</span><span><span class="kbd">esc</span> close</span></div>' +
+      "</div></div>";
+    const inp = $("#cmdkInput");
+    if (inp) { inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length); }
+  }
+  function runCmd(i) {
+    const list = filterCommands(state.cmdk.q);
+    const cmd = list[i];
+    closeCmdk();
+    if (cmd) { recordRecentCmd(cmd.id); cmd.run(); }
+  }
+
+  function hideSearch() {
+    const r = $("#searchResults");
+    if (r) r.classList.add("hidden");
+  }
+
+  // Matches the command palette's own interaction model (arrow keys, Enter,
+  // a highlighted row) rather than making the user learn a second pattern
+  // for what is, from their side, the same "find something" gesture —
+  // consistency between similar controls in one product (Jakob's Law).
+  let searchTimer = null;
+  let searchIdx = -1;
+  let lastSearchHits = [];
+  let lastSearchQuery = "";
+
+  function highlightMatch(text, q) {
+    if (!q) return esc(text);
+    const idx = text.toLowerCase().indexOf(q.toLowerCase());
+    if (idx === -1) return esc(text);
+    return esc(text.slice(0, idx)) + '<mark class="sr-hit">' + esc(text.slice(idx, idx + q.length)) + "</mark>" + esc(text.slice(idx + q.length));
+  }
+
+  function renderSearchResults() {
+    const box = $("#searchResults");
+    if (!box) return;
+    box.classList.remove("hidden");
+    if (searchIdx >= lastSearchHits.length) searchIdx = lastSearchHits.length - 1;
+    box.innerHTML = lastSearchHits.length
+      ? lastSearchHits.map((h, i) => '<div class="sr' + (i === searchIdx ? " on" : "") + '" data-action="' + h.action + '" data-id="' + h.id + '"><span>' + highlightMatch(h.label, lastSearchQuery) + '</span><span class="kind">' + esc(h.kind) + "</span></div>").join("")
+      : '<div class="empty">No matches for “' + esc(lastSearchQuery) + '”</div>';
+  }
+
+  function doSearch(q) {
+    const box = $("#searchResults");
+    q = q.trim();
+    lastSearchQuery = q;
+    searchIdx = -1;
+    if (!q) { box.classList.add("hidden"); box.innerHTML = ""; lastSearchHits = []; return; }
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(async () => {
+      let res;
+      try { res = await api("GET", "/api/search?q=" + encodeURIComponent(q)); }
+      catch (e) { return; }
+      const hits = [];
+      (res.contacts || []).forEach(c => hits.push({ label: c.name, kind: "Contact · " + (c.phone || ""), action: "view-contact", id: c.id }));
+      (res.invoices || []).forEach(i => hits.push({ label: i.number + " — " + ((i.contact && i.contact.name) || "Walk-in"), kind: "Invoice · " + money(i.totals ? i.totals.total : 0), action: "goto-payments", id: i.id }));
+      (res.messages || []).forEach(m => hits.push({ label: msgWho(m), kind: (CHAN_LBL[m.channel] || m.channel) + " · " + timeAgo(m.occurred_at), action: "goto-inbox", id: m.id }));
+      lastSearchHits = hits.slice(0, 8);
+      renderSearchResults();
+    }, 180);
+  }
+
+  document.addEventListener("keydown", function (e) {
+    if (!(e.target && e.target.id === "search")) return;
+    const box = $("#searchResults");
+    if (!box || box.classList.contains("hidden") || !lastSearchHits.length) return;
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      searchIdx = searchIdx < 0 ? 0 : Math.min(searchIdx + 1, lastSearchHits.length - 1);
+      renderSearchResults();
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      searchIdx = Math.max(searchIdx - 1, 0);
+      renderSearchResults();
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      const h = lastSearchHits[searchIdx >= 0 ? searchIdx : 0];
+      if (h) {
+        hideSearch();
+        const fn = actions[h.action];
+        if (fn) fn({ dataset: { id: String(h.id) } });
+      }
+    }
+  });
+
+  document.addEventListener("click", function (e) {
+    if (!e.target.closest(".search-wrap")) hideSearch();
+  });
+
+  loadAll();
+  window.__sb = {
+    state: state, actions: actions,
+    clearProgress: clearProgress, landmark: landmark,
+    openCmdk: openCmdk, closeCmdk: closeCmdk, filterCommands: filterCommands
+  };
+})();
+</script>

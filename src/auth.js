@@ -63,6 +63,33 @@ function clear(res) {
   res.clearCookie(COOKIE);
 }
 
+/**
+ * A single shared password on a public URL is the weakest point in the
+ * system — without a limiter it is trivially brute-forceable. In-memory is
+ * fine here: one process, one deployment, no need for a shared store.
+ */
+const LOGIN_WINDOW_MS = 15 * 60 * 1000;
+const LOGIN_MAX_ATTEMPTS = 8;
+const loginAttempts = new Map(); // ip -> { count, resetAt }
+
+function loginRateLimited(req) {
+  const rec = loginAttempts.get(req.ip);
+  if (!rec || rec.resetAt < Date.now()) return false;
+  return rec.count >= LOGIN_MAX_ATTEMPTS;
+}
+
+function recordFailedLogin(req) {
+  const now = Date.now();
+  let rec = loginAttempts.get(req.ip);
+  if (!rec || rec.resetAt < now) rec = { count: 0, resetAt: now + LOGIN_WINDOW_MS };
+  rec.count += 1;
+  loginAttempts.set(req.ip, rec);
+}
+
+function clearLoginAttempts(req) {
+  loginAttempts.delete(req.ip);
+}
+
 /** Constant-time password comparison. */
 function passwordMatches(supplied) {
   if (!config.appPassword) return true;
@@ -89,4 +116,16 @@ function writable(req, res, next) {
   next();
 }
 
-module.exports = { issue, clear, required, writable, passwordMatches, COOKIE, verify, parseCookies };
+module.exports = {
+  issue,
+  clear,
+  required,
+  writable,
+  passwordMatches,
+  COOKIE,
+  verify,
+  parseCookies,
+  loginRateLimited,
+  recordFailedLogin,
+  clearLoginAttempts,
+};
