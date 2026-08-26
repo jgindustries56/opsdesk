@@ -274,6 +274,34 @@ async function main() {
     assert.ok(Number.isFinite(prog.total));
     assert.ok(Number.isFinite(prog.remaining));
     assert.ok(prog.pct >= 0 && prog.pct <= 1);
+    assert.ok(Number.isFinite(prog.streak));
+    assert.ok(Number.isFinite(prog.open_commitments));
+    assert.ok(Number.isFinite(prog.overdue_commitments));
+  });
+
+  await check('clean-queue streak is recorded once remaining hits zero', async () => {
+    const dbm = require('../src/db');
+    // Not a realistic zero-queue state (there's plenty seeded above) — call
+    // the recorder directly with remaining=0 the way the route does, and
+    // confirm it writes today's date and counts as a 1-day streak.
+    const { recordClearAndGetStreak, todayIso } = require('../src/lib');
+    const streak = await recordClearAndGetStreak(0);
+    assert.ok(streak >= 1);
+    const row = await dbm.one('SELECT date FROM daily_clear_log WHERE date = $1', [todayIso()]);
+    assert.ok(row, 'today should be logged as cleared');
+  });
+
+  await check('overdue commitments are distinguished from upcoming ones', async () => {
+    const past = new Date(Date.now() - 3600000).toISOString();
+    const dbm = require('../src/db');
+    await dbm.query(
+      `INSERT INTO scheduled_followups (trigger_label, trigger_at, target_kind, target_id, label, created_at)
+       VALUES ($1,$2,$3,$4,$5,$6)`,
+      ['Later today', past, 'call-back', contact.id, 'Overdue fixture', past]
+    );
+    const prog = await req('GET', '/api/queue/progress');
+    assert.ok(prog.overdue_commitments >= 1);
+    assert.ok(prog.open_commitments >= prog.overdue_commitments);
   });
 
   await check('quick capture creates a message and upserts the contact', async () => {

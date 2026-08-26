@@ -148,6 +148,34 @@ async function getSettingsMap() {
   return Object.fromEntries(rows.map((r) => [r.key, r.value]));
 }
 
+/**
+ * Records today as a "cleared" day the first time the queue hits zero, and
+ * returns the current consecutive-day streak ending today (or yesterday, if
+ * today hasn't been cleared yet — a streak isn't broken until the day is
+ * actually over).
+ */
+async function recordClearAndGetStreak(remaining) {
+  const today = todayIso();
+  if (remaining === 0) {
+    const existing = await db.one('SELECT date FROM daily_clear_log WHERE date = $1', [today]);
+    if (!existing) {
+      await db.query('INSERT INTO daily_clear_log (date, cleared_at) VALUES ($1,$2)', [
+        today,
+        nowIso(),
+      ]);
+    }
+  }
+  const rows = await db.all('SELECT date FROM daily_clear_log ORDER BY date DESC LIMIT 400');
+  const cleared = new Set(rows.map((r) => r.date));
+  let streak = 0;
+  let cursor = cleared.has(today) ? today : addDays(today, -1);
+  while (cleared.has(cursor)) {
+    streak += 1;
+    cursor = addDays(cursor, -1);
+  }
+  return streak;
+}
+
 async function logActivity(entityType, entityId, kind, body, actor = 'system') {
   await db.query(
     'INSERT INTO activity (entity_type, entity_id, kind, body, actor, created_at) VALUES ($1,$2,$3,$4,$5,$6)',
@@ -377,6 +405,7 @@ module.exports = {
   formatMoneyServer,
   seedSettingsDefaults,
   getSettingsMap,
+  recordClearAndGetStreak,
   SETTINGS_DEFAULTS,
   DAY_MS,
 };

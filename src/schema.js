@@ -146,6 +146,14 @@ const TABLES = [
      done_at       ${D.ts},
      created_at    ${D.ts} DEFAULT ${D.now}
    )`,
+
+  // One row per calendar day the attention queue was fully cleared at least
+  // once. Powers the "clean queue" streak — loss aversion makes a real,
+  // honestly-earned streak worth protecting far more than a bare counter.
+  `CREATE TABLE IF NOT EXISTS daily_clear_log (
+     date          ${D.text} PRIMARY KEY,
+     cleared_at    ${D.ts} DEFAULT ${D.now}
+   )`,
 ];
 
 const INDEXES = [

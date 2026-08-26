@@ -279,6 +279,10 @@
   .inbox-item { display: flex; align-items: flex-start; gap: 12px; padding: 12px 17px; border-bottom: 1px solid var(--gridline); }
   .inbox-item:last-child { border-bottom: none; }
   .inbox-item.unread { background: var(--surface-raised); }
+  .inbox-item.sla-warm { border-left: 3px solid var(--warning); }
+  .inbox-item.sla-hot { border-left: 3px solid var(--critical); }
+  .inbox-time.sla-warm { color: var(--warning-text); font-weight: 700; }
+  .inbox-time.sla-hot { color: var(--critical-text); font-weight: 700; }
   .chan-ico {
     width: 30px; height: 30px; border-radius: 8px; flex-shrink: 0;
     display: flex; align-items: center; justify-content: center; font-size: 13px;
@@ -438,6 +442,7 @@
   @media (prefers-reduced-motion: reduce) { .ring-fg { transition: none; } }
   .ring-label { font-size: 12px; color: var(--ink-secondary); line-height: 1.35; }
   .ring-label strong { display: block; font-size: 13.5px; color: var(--ink); font-weight: 700; }
+  .streak-note { margin-top: 3px; font-size: 11.5px; font-weight: 700; color: var(--warning-text); }
 
   /* --- temporal landmark --- */
   .landmark {
@@ -477,6 +482,9 @@
   .sched-body { flex: 1; min-width: 0; }
   .sched-body .st { font-weight: 600; }
   .sched-body .sd { font-size: 11.5px; color: var(--ink-muted); }
+  .sched-item.overdue { background: var(--critical-bg); margin: 0 -17px; padding-left: 14px; padding-right: 17px; }
+  .sched-item.overdue .sched-when { background: var(--critical); color: #fff; }
+  .sched-item.overdue .sched-body .sd { color: var(--critical-text); font-weight: 600; }
 
   .trigger-opt {
     display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
@@ -664,7 +672,7 @@
     invoices: [],
     contacts: [],
     queue: [],
-    progress: { done: 0, total: 1, remaining: 0, pct: 0 },
+    progress: { done: 0, total: 1, remaining: 0, pct: 0, streak: 0, open_commitments: 0, overdue_commitments: 0 },
     scheduled: [],
     revenue: [],
     triggerOptions: [],
@@ -741,7 +749,7 @@
       if (!msgByContact.has(k)) msgByContact.set(k, []);
       msgByContact.get(k).push(m);
     });
-    return state.contacts.map(c => {
+    const built = state.contacts.map(c => {
       const invs = invByContact.get(String(c.id)) || [];
       const msgs = msgByContact.get(String(c.id)) || [];
       const ltv = invs.reduce((s, iv) => s + (iv.status === "paid" ? iv.amount_cents : (iv.amount_cents - iv.balance_cents)), 0);
@@ -764,6 +772,19 @@
         raw: c,
       };
     });
+
+    // ServiceTitan's biggest CRM edge over lighter competitors is tracking
+    // customer lifetime value and using it to prioritize attention — a top
+    // customer going quiet is a bigger loss than a one-time walk-in going
+    // quiet, so the UI should say so rather than treating every "stale"
+    // contact the same.
+    const sortedLtv = built.map(c => c.ltv).filter(v => v > 0).sort((a, b) => a - b);
+    const vipThreshold = sortedLtv.length >= 4 ? sortedLtv[Math.floor(sortedLtv.length * 0.75)] : Infinity;
+    built.forEach(c => {
+      c.vip = c.ltv > 0 && c.ltv >= vipThreshold;
+      if (c.vip && c.flag === "stale") c.flag = "stale-vip";
+    });
+    return built;
   }
 
   // Maps the seven backend follow-up rules onto Switchboard's attention-item
@@ -831,8 +852,12 @@
   }
 
   // ============ nav ============
+  // Zeigarnik effect: an unresolved commitment you made to yourself is worth
+  // the same visible-badge treatment as an unread message — both are open
+  // loops that stay in mind (and get acted on) more reliably when they stay
+  // visible, rather than only surfacing once you happen to scroll to them.
   const PAGES = [
-    { key: "overview", label: "Overview", ico: "&#9673;" },
+    { key: "overview", label: "Overview", ico: "&#9673;", badge: () => state.progress.overdue_commitments || 0 },
     { key: "inbox", label: "Inbox", ico: "&#9993;", badge: unreadCount },
     { key: "payments", label: "Payments", ico: "&#128179;" },
     { key: "contacts", label: "Contacts", ico: "&#128100;" },
@@ -857,6 +882,40 @@
       '<button class="btn btn-primary" data-action="retry-load">Try again</button>';
   }
 
+  /**
+   * A commitment you already made to yourself ("I will call them back
+   * Monday morning") is a stronger, more honest prompt once it's actually
+   * due and still open — that's commitment-and-consistency at work, not
+   * a manufactured deadline. Overdue ones get the same visual weight as an
+   * overdue invoice; ones still ahead of schedule stay calm.
+   */
+  function renderCommitmentsPanel() {
+    const now = new Date().toISOString();
+    const overdue = state.scheduled.filter(s => s.trigger_at <= now).sort((a, b) => a.trigger_at < b.trigger_at ? -1 : 1);
+    const upcoming = state.scheduled.filter(s => s.trigger_at > now).sort((a, b) => a.trigger_at < b.trigger_at ? -1 : 1);
+
+    function schedRow(s, isOverdue) {
+      return '<div class="sched-item' + (isOverdue ? " overdue" : "") + '">' +
+        (isOverdue ? '<span class="sev critical"></span>' : "") +
+        '<span class="sched-when">' + esc(s.trigger_label) + "</span>" +
+        '<div class="sched-body"><div class="st">' + esc(s.label) + '</div><div class="sd">' +
+          (isOverdue ? "You said " + esc(s.trigger_label).toLowerCase() + " — still open" : "Committed " + new Date(s.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })) +
+        "</div></div>" +
+        '<button class="btn btn-ghost btn-sm" data-action="do-scheduled" data-id="' + s.id + '">Do it now</button>' +
+        '<button class="btn btn-ghost btn-sm" data-action="drop-scheduled" data-id="' + s.id + '">Drop</button>' +
+      "</div>";
+    }
+
+    return '<div class="panel" style="margin-bottom:22px;">' +
+      '<div class="panel-head"><h2>' + (overdue.length ? "Commitments — " + overdue.length + " overdue" : "Scheduled follow-ups") + ' <span class="sub">— decided in advance</span></h2>' +
+      '<span class="sub">' + state.scheduled.length + " total</span></div>" +
+      "<div>" +
+        overdue.map(s => schedRow(s, true)).join("") +
+        upcoming.map(s => schedRow(s, false)).join("") +
+      "</div>" +
+    "</div>";
+  }
+
   function pageOverview() {
     const items = attentionItems();
     const out = outstanding_cents();
@@ -868,6 +927,11 @@
     const C = 2 * Math.PI * 20;
     const summary = state.summary || {};
 
+    // Streak framed as something already earned, not a bare counter — loss
+    // aversion makes "don't break it" a stronger pull than "start one."
+    const streakNote = prog.streak >= 2
+      ? '<div class="streak-note">&#128293; ' + prog.streak + '-day clean-queue streak</div>'
+      : "";
     const ring =
       '<div class="clear-ring">' +
         '<svg class="ring-svg" viewBox="0 0 46 46" aria-hidden="true">' +
@@ -875,7 +939,8 @@
           '<circle class="ring-fg" cx="23" cy="23" r="20" stroke-dasharray="' + C.toFixed(1) + '" stroke-dashoffset="' + (C * (1 - prog.pct)).toFixed(1) + '"></circle>' +
         "</svg>" +
         '<div class="ring-label"><strong>' + prog.done + " of " + prog.total + " cleared</strong>" +
-        (prog.remaining ? (prog.remaining === 1 ? "One left — finish the set." : prog.remaining + " to go today.") : "Queue is empty.") + "</div>" +
+        (prog.remaining ? (prog.remaining === 1 ? "One left — finish the set." : prog.remaining + " to go today.") : "Queue is empty.") +
+        streakNote + "</div>" +
       "</div>";
 
     const attentionInner = items.length
@@ -902,7 +967,7 @@
     '<div class="page-head"><h1>Overview</h1><p>Everything that happened, and the three things that need you today.</p></div>' +
 
     '<div class="landmark"><span class="lm-ico">' + lm.ico + '</span><div class="lm-text">' + lm.text + "</div>" +
-      (state.scheduled.length ? '<button class="btn btn-ghost btn-sm" data-action="nav" data-page="inbox">' + state.scheduled.length + " scheduled</button>" : "") +
+      (state.scheduled.length ? '<span class="sub" style="white-space:nowrap;">' + state.scheduled.length + " committed</span>" : "") +
     "</div>" +
 
     '<div class="attention' + (items.length ? "" : " clear") + '">' +
@@ -915,18 +980,7 @@
       "</div>" + attentionInner +
     "</div>" +
 
-    (state.scheduled.length ?
-      '<div class="panel" style="margin-bottom:22px;">' +
-        '<div class="panel-head"><h2>Scheduled follow-ups <span class="sub">— decided in advance</span></h2>' +
-        '<span class="sub">' + state.scheduled.length + " committed</span></div>" +
-        "<div>" + state.scheduled.map(s =>
-          '<div class="sched-item">' +
-            '<span class="sched-when">' + esc(s.trigger_label) + "</span>" +
-            '<div class="sched-body"><div class="st">' + esc(s.label) + '</div><div class="sd">Committed ' + new Date(s.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" }) + "</div></div>" +
-            '<button class="btn btn-ghost btn-sm" data-action="do-scheduled" data-id="' + s.id + '">Do it now</button>' +
-            '<button class="btn btn-ghost btn-sm" data-action="drop-scheduled" data-id="' + s.id + '">Drop</button>' +
-          "</div>").join("") + "</div>" +
-      "</div>" : "") +
+    (state.scheduled.length ? renderCommitmentsPanel() : "") +
 
     '<div class="kpi-row">' +
       kpi("Revenue, month to date", money(summary.collected_this_month_cents), "&#8593;", "good", "0,24 33,20 66,18 100,12 133,10 166,6 200,2", "var(--good)", money(summary.billed_this_month_cents) + " billed this month", "goto-payments") +
@@ -986,11 +1040,23 @@
     "</button>";
   }
 
+  // SLA-style urgency, the way Front/Intercom color-code an open conversation
+  // by real elapsed time rather than a flat "unread" flag — the visual
+  // pressure to respond should grow the longer something genuinely waits.
+  function inboxUrgency(m) {
+    if (m.status !== "new" && m.status !== "missed") return null;
+    const minutes = timeTs(m.occurred_at) / 60000;
+    if (minutes >= 120) return "hot";
+    if (minutes >= 15) return "warm";
+    return null;
+  }
+
   function inboxRow(m) {
-    return '<div class="inbox-item' + (Number(m.unread) ? " unread" : "") + '">' +
+    const urgency = inboxUrgency(m);
+    return '<div class="inbox-item' + (Number(m.unread) ? " unread" : "") + (urgency ? " sla-" + urgency : "") + '">' +
       '<div class="chan-ico ' + m.channel + '">' + CHAN_ICO[m.channel] + "</div>" +
       '<div class="inbox-main">' +
-        '<div class="inbox-top"><span class="inbox-name">' + esc(msgWho(m)) + '</span><span class="inbox-time">' + timeAgo(m.occurred_at) + "</span></div>" +
+        '<div class="inbox-top"><span class="inbox-name">' + esc(msgWho(m)) + '</span><span class="inbox-time' + (urgency ? " sla-" + urgency : "") + '">' + timeAgo(m.occurred_at) + "</span></div>" +
         '<div class="inbox-snippet">' + esc(msgSnippet(m)) + "</div>" +
         '<div class="inbox-bottom">' +
           '<span class="pill ' + m.status + '">' + m.status.toUpperCase() + "</span>" +
@@ -1132,7 +1198,11 @@
     else if (state.contactSort === "value") list.sort((a, b) => b.ltv - a.ltv);
     else if (state.contactSort === "stale") list.sort((a, b) => b.lastTs - a.lastTs);
 
-    const flagPill = { overdue: ["missed", "OWES"], "no-callback": ["missed", "NO CALLBACK"], stale: ["waiting", "GOING COLD"], "new": ["new", "NEW"] };
+    const flagPill = {
+      overdue: ["missed", "OWES"], "no-callback": ["missed", "NO CALLBACK"],
+      stale: ["waiting", "GOING COLD"], "stale-vip": ["missed", "TOP CUSTOMER, GOING QUIET"],
+      "new": ["new", "NEW"],
+    };
     const sorts = [["recent", "Most recent"], ["value", "Highest value"], ["stale", "Going cold"]];
 
     return '<div class="page-head"><h1>Contacts</h1><p>Service history is the thing owners reach for most — every job, call, and dollar per person.</p></div>' +
@@ -1147,7 +1217,9 @@
         list.map(c => {
           const fp = c.flag ? flagPill[c.flag] : null;
           return "<tr>" +
-            '<td><div class="who">' + esc(c.name) + " " + (fp ? '<span class="pill ' + fp[0] + '" style="margin-left:4px;">' + fp[1] + "</span>" : "") + "</div>" +
+            '<td><div class="who">' + esc(c.name) +
+              (c.vip ? ' <span class="pill" style="background:var(--brand-wash);color:var(--brand-deep);" title="Top 25% by lifetime value">&#9733; VIP</span>' : "") +
+              " " + (fp ? '<span class="pill ' + fp[0] + '" style="margin-left:4px;">' + fp[1] + "</span>" : "") + "</div>" +
             '<div class="sub">' + esc(c.phone) + "</div></td>" +
             "<td>" + esc(c.vehicle) + '<div class="sub">' + c.visits + " visit" + (c.visits === 1 ? "" : "s") + "</div></td>" +
             '<td class="right tab" style="font-weight:600;">' + money(c.ltv) + "</td>" +

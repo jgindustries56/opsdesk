@@ -2,7 +2,7 @@
 
 const db = require('../db');
 const express = require('express');
-const { buildFollowUps, todayIso } = require('../lib');
+const { buildFollowUps, todayIso, nowIso, recordClearAndGetStreak } = require('../lib');
 
 const router = express.Router();
 
@@ -29,7 +29,22 @@ router.get('/progress', async (req, res) => {
   );
   const clearedToday = activityRows.filter((r) => CLEARING_KINDS.has(r.kind)).length;
   const total = Math.max(clearedToday + remaining, 1);
-  res.json({ done: clearedToday, total, remaining, pct: clearedToday / total });
+  const streak = await recordClearAndGetStreak(remaining);
+
+  const openCommitments = await db.all(
+    'SELECT id, trigger_at FROM scheduled_followups WHERE done_at IS NULL'
+  );
+  const overdueCommitments = openCommitments.filter((c) => c.trigger_at <= nowIso()).length;
+
+  res.json({
+    done: clearedToday,
+    total,
+    remaining,
+    pct: clearedToday / total,
+    streak,
+    open_commitments: openCommitments.length,
+    overdue_commitments: overdueCommitments,
+  });
 });
 
 module.exports = router;
