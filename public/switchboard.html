@@ -578,6 +578,17 @@
        wrap instead of forcing horizontal scroll. */
     .attention-item { flex-wrap: wrap; }
     .attention-item .text { flex: 1 1 100%; }
+
+    /* Touch targets: the MIT Touch Lab (Parhi/Karlson/Bederson, 2006) and
+       Apple's own HIG both land on ~40-44px as the comfortable minimum for
+       a fingertip; .btn-sm is tuned for a mouse pointer at ~26px. These are
+       exactly the buttons a thumb taps most on this screen — Reply, Mark
+       done, Mark paid — so give touch widths more room without changing
+       the denser desktop layout. Row-action gap widens too: a cramped gap
+       between adjacent targets is its own source of mis-taps, independent
+       of each target's own size. */
+    .btn-sm { min-height: 40px; padding: 9px 14px; }
+    .row-actions { gap: 10px; }
   }
 </style>
 
